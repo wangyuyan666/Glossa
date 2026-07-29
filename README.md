@@ -64,29 +64,34 @@ http://127.0.0.1:1234/v1       # LM Studio
 
 ## 配置 PopClip 取词
 
-PopClip 用 **snippet** 安装扩展：不需要新建文件，把一段 YAML **选中**，PopClip 就会提示安装。
+设置窗口 → **取词** → 点「安装到 PopClip」。EnAssistant 会生成扩展并交给 PopClip，在它弹出的确认框里点安装即可。
 
-1. 设置窗口 → **PopClip 取词配置** → 点「复制片段」
-2. 粘贴到任意能选中文本的地方（备忘录、文本编辑等）
-3. **选中整段**，包括开头的 `#popclip` 那一行
-4. PopClip 条上出现 **Install Extension**，点它
-5. PopClip 会提示这是未签名扩展，确认安装
+安装后：在任意 app 里选中英文 → PopClip 条上点 EnAssistant 图标 → 弹窗出现在光标旁。
+
+### 手动安装
+
+一键安装依赖 macOS 的文件关联。Setapp 版 PopClip、多版本共存、关联被别的软件抢走都可能让它失效，这时走手动路径：
+
+设置窗口 → **取词** → **手动安装** → 复制片段 → 粘贴到任意能选中文本的地方 → **选中整段** → PopClip 条上出现 **Install Extension** → 点它。
 
 片段内容（端口跟着设置里的值走）：
 
 ```yaml
 #popclip
 name: EnAssistant
+identifier: com.peter.enassistant
 icon: symbol:character.book.closed
 interpreter: bash
 shell script: curl -s -X POST http://127.0.0.1:8765/lookup --data-urlencode "q=$POPCLIP_TEXT" -o /dev/null
 ```
 
-> 开头的 `#popclip` 是 PopClip 识别 snippet 的标志，少了它整段就只是普通文本。
+> 开头的 `#popclip` 是 PopClip 识别 snippet 的标志，少了它整段就只是普通文本。一键安装用的是另一种形式（`.popclipext` 目录 + `Config.yaml`），那种**不需要**这个头行。
 
-安装后：在任意 app 里选中英文 → PopClip 条上点 EnAssistant 图标 → 弹窗出现在光标旁。
+### 没反应的排查
 
-**没反应的排查**：先确认 EnAssistant 正在运行（`curl http://127.0.0.1:8765/ping` 应返回 `EnAssistant`），再确认 PopClip 里该扩展没被禁用。
+1. EnAssistant 在跑吗——`curl http://127.0.0.1:8765/ping` 应返回 `EnAssistant`
+2. 端口对得上吗——改过端口要重启 EnAssistant 并重新安装一次扩展
+3. PopClip 里该扩展没被禁用吧
 
 > 为什么用本地端口而不是 `enassistant://` deep link：macOS 不支持运行时注册 URL scheme，deep link 只有装到 `/Applications` 的打包 .app 才能测，`tauri dev` 下没法调试。另外 PopClip 的 url action 会顺带打开浏览器标签页。
 

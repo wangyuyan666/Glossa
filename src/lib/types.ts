@@ -24,6 +24,13 @@ export interface Settings {
   nativeLanguage: string;
 }
 
+export interface InstallOutcome {
+  /** 生成的 .popclipext 目录路径 */
+  path: string;
+  /** 是否已交给 PopClip 打开。探测不到 PopClip 时为 false */
+  opened: boolean;
+}
+
 export interface LookupPayload {
   text: string;
   /** 阶段一取词层拿不到上下文，恒为 null */

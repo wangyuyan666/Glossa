@@ -1,5 +1,6 @@
 mod config;
 mod llm;
+mod popclip;
 mod popup;
 mod prompts;
 mod server;
@@ -198,6 +199,26 @@ fn emit(app: &AppHandle, event: StreamEvent) {
     }
 }
 
+// ---------------------------------------------------------------- 取词命令
+
+/// 生成 `.popclipext` 扩展并交给 PopClip 打开，由用户在 PopClip 的确认框里完成安装。
+#[tauri::command]
+fn install_popclip_extension(app: AppHandle) -> Result<popclip::InstallOutcome, String> {
+    popclip::install(&app).map_err(|e| e.to_string())
+}
+
+/// 设置页据此决定是显示一键安装还是「未检测到 PopClip」。
+#[tauri::command]
+fn popclip_installed() -> bool {
+    popclip::find_popclip().is_some()
+}
+
+/// 手动安装用的 snippet 文本。生成逻辑放在 Rust 侧，和一键安装共用同一份端口与 identifier。
+#[tauri::command]
+fn popclip_snippet(app: AppHandle) -> String {
+    popclip::snippet(config::load(&app).port)
+}
+
 // ---------------------------------------------------------------- 窗口命令
 
 #[tauri::command]
@@ -250,6 +271,9 @@ pub fn run() {
             take_pending_lookup,
             explain,
             chat_turn,
+            install_popclip_extension,
+            popclip_installed,
+            popclip_snippet,
             hide_popup,
             open_settings,
         ])

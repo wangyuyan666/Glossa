@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import * as api from "../lib/api";
 import type { RoleBinding, Settings as SettingsData } from "../lib/types";
 import { PROTOCOL_DEFAULT_BASE_URL } from "../lib/types";
+import { CaptureSection } from "./CaptureSection";
 import { ProviderEditor } from "./ProviderEditor";
 import "./settings.css";
 
@@ -14,27 +15,19 @@ const EMPTY: SettingsData = {
   nativeLanguage: "中文",
 };
 
-/**
- * PopClip 的 snippet 格式：必须以 `#popclip` 开头，其余部分是 YAML。
- * 用单行 shell script 而不是 `|` 块，省掉 YAML 缩进出错的可能。
- */
-function popclipSnippet(port: number): string {
-  return `#popclip
-name: EnAssistant
-icon: symbol:character.book.closed
-interpreter: bash
-shell script: curl -s -X POST http://127.0.0.1:${port}/lookup --data-urlencode "q=$POPCLIP_TEXT" -o /dev/null`;
-}
-
 export function Settings() {
   const [settings, setSettings] = useState<SettingsData>(EMPTY);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, string[]>>({});
   const [filePath, setFilePath] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  /** 已落盘的端口。取词 section 据此判断表单里的端口改了还没保存 */
+  const [savedPort, setSavedPort] = useState<number | null>(null);
 
   useEffect(() => {
-    void api.getSettings().then(setSettings);
+    void api.getSettings().then((loaded) => {
+      setSettings(loaded);
+      setSavedPort(loaded.port);
+    });
     void api.settingsFilePath().then(setFilePath);
   }, []);
 
@@ -71,17 +64,10 @@ export function Settings() {
     try {
       await api.saveSettings(settings);
       setSaved("已保存");
+      setSavedPort(settings.port);
     } catch (e) {
       setSaved(`保存失败：${e}`);
     }
-  };
-
-  const snippet = useMemo(() => popclipSnippet(settings.port), [settings.port]);
-
-  const copySnippet = async () => {
-    await navigator.clipboard.writeText(snippet);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   };
 
   const roleRow = (
@@ -195,25 +181,10 @@ export function Settings() {
             onChange={(e) => patch({ port: Number(e.target.value) || 8765 })}
           />
         </label>
-        <p className="muted">改端口后需重启 EnAssistant，并同步更新下方 PopClip 片段。</p>
+        <p className="muted">改端口后需重启 EnAssistant，并重新安装一次 PopClip 扩展。</p>
       </section>
 
-      <section>
-        <h2>PopClip 取词配置</h2>
-        <ol className="muted steps">
-          <li>点下面的「复制片段」</li>
-          <li>粘贴到任意能选中文本的地方（备忘录、文本编辑、浏览器地址栏之外的输入框都行）</li>
-          <li>
-            <strong>选中整段</strong>（含开头的 <code>#popclip</code> 一行），PopClip 条上会出现
-            <strong> Install Extension</strong>，点它
-          </li>
-          <li>PopClip 会提示这是未签名扩展，确认安装即可</li>
-        </ol>
-        <pre className="snippet">{snippet}</pre>
-        <button type="button" onClick={() => void copySnippet()}>
-          {copied ? "已复制" : "复制片段"}
-        </button>
-      </section>
+      <CaptureSection port={settings.port} savedPort={savedPort} />
 
       <section>
         <h2>存储</h2>

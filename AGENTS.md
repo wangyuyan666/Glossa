@@ -13,7 +13,8 @@ macOS 上的 LLM 英语学习工具：跨 app 划词 → 光标旁弹窗给释�
 | | 取词层 | 能拿到上下文 | 状态 |
 | --- | --- | --- | --- |
 | 阶段一 | PopClip → 本地 HTTP 端口 | 否 | 已实现 |
-| 阶段二 | 自建 Accessibility API 取词 | 是 | 未开始 |
+| 阶段一补 | PopClip 扩展一键安装 | 否 | 已实现 |
+| 阶段二 | 全局快捷键 + Accessibility API 取词 | 是 | **TODO** |
 
 阶段一只为验证「划词 → 释义 → 追问」这套交互，取词层是借来的，随时可换。因此：
 
@@ -21,13 +22,42 @@ macOS 上的 LLM 英语学习工具：跨 app 划词 → 光标旁弹窗给释�
 - `LookupPayload.context` 字段现在恒为 `None`，但**链路已经全程打通**（server → popup 事件 → `explain` 命令 → 提示词）。阶段二只需把它填上。
 - 提示词里已经分了「有上下文」与「无上下文」两套措辞（`prompts.rs`）。
 
-阶段二要做的：用 `kAXSelectedTextAttribute` 取选中文本，失败降级为模拟 `Cmd+C`；同时读 `kAXValue` + `kAXSelectedTextRange`，从整段文本切出前后文填进 `context`。参考 [`yetone/get-selected-text`](https://github.com/yetone/get-selected-text)。
+## 阶段二 TODO：快捷键取词
+
+两条取词路径**并存**，不互斥——PopClip 要点条上的图标，快捷键要按键，同一次选词不可能都触发。快捷键路径能拿到上下文，PopClip 路径作为无权限时的降级。
+
+计划中的模块：
+
+```
+src-tauri/src/capture/
+  mod.rs         AX 优先，Cmd+C 兜底，统一返回 Selection{ text, context }
+  ax.rs          kAXSelectedTextAttribute / kAXValue / kAXSelectedTextRange
+  clipboard.rs   Cmd+C 兜底：存旧剪贴板 → CGEventPost → 读 → 还原
+  permission.rs  AXIsProcessTrustedWithOptions + 跳系统设置面板
+  context.rs     从整段文本切前后文（纯函数，可单测）
+```
+
+默认快捷键 `⌘⇧E`，设置里可改。开关默认关闭，**打开时才申请辅助功能权限**——不打开就完全不碰权限。
+
+已经踩明白、别再重新推一遍的坑：
+
+- **AX 的 range 是 UTF-16 code unit 索引**，Rust `String` 是 UTF-8。直接拿 range 当字节偏移切，中英混排必然切在字符中间 panic。要先转 `Vec<u16>` 再切回来。
+- **取词必须在 `popup.show()` 之前**。先显示弹窗会让 EnAssistant 变成前台 app，接着读 AX 就读到我们自己的窗口了。
+- **前台 app 是 EnAssistant 自己时要跳过**（用户在弹窗里手滑按了快捷键）。
+- **`RegisterEventHotKey` 优先级低**，被系统或其他 app 占用时注册会失败。必须在设置页明确报错，静默失败会让用户以为取词坏了。
+- **TCC 权限按二进制路径 + 签名记账**。`tauri dev` 跑的是 `target/debug/enassistant` 裸二进制而非 `.app` bundle，每次改 Rust 重编都换了二进制，授权可能失效或反复弹窗。AX 相关功能要在 `npm run tauri build` 的产物上验证。这和 deep link 那个坑是同一类问题。
+- 权限只需要**辅助功能**一个。CGEventTap 监听选区还要额外的**输入监控**权限，两次授权流程会明显拉高流失——这也是选快捷键而非选区监听的原因之一。
+
+上下文能力是**尽力而为**：Electron / Chrome 系 app 的 AX 实现参差，`kAXValue` 经常拿不到整段文本；Cmd+C 兜底路径永远拿不到上下文（剪贴板里只有选中内容）。这些情况降级成 `context: None` 即可，提示词本来就分了两套。
+
+参考实现：[`yetone/get-selected-text`](https://github.com/yetone/get-selected-text)（Rust，只取词不取上下文）。
 
 ## 目录
 
 ```
 src-tauri/src/
   lib.rs          Tauri Builder、全部 #[tauri::command]、流式事件的编排
+  popclip.rs      PopClip 扩展的生成与安装（package 一键 / snippet 手动）
   config.rs       Settings 结构与磁盘读写（明文 JSON + 0600）
   server.rs       本地取词监听（axum，只绑 127.0.0.1）
   popup.rs        弹窗显示与光标定位
@@ -47,8 +77,23 @@ src/
     stream.ts     llm-stream 事件的单例监听与按 streamId 分发
     jsonish.ts    容错的增量 JSON 解析
   popup/          弹窗 UI
-  settings/       设置窗口 UI
+  settings/       设置窗口 UI（CaptureSection 是取词那一节）
 ```
+
+## PopClip 的两种安装形式
+
+别搞混，两者的要求正相反：
+
+| | snippet | package |
+| --- | --- | --- |
+| 形态 | 一段 YAML 文本 | `.popclipext` 目录 + `Config.yaml` |
+| `#popclip` 头行 | **必须有**，是识别标志 | **不要有** |
+| 安装方式 | 用户**选中**整段，PopClip 条上出现 Install Extension | `open` 该目录，PopClip 弹确认框 |
+| 我们用在 | 手动安装（兜底） | 一键安装 |
+
+两种形式都带 `identifier: com.peter.enassistant`，PopClip 据此认出是同一个扩展——改端口后重装会覆盖，而不是多出一个重复图标。
+
+一键安装依赖 macOS 文件关联，Setapp 版、多版本共存、关联被别的软件抢走都可能失效，所以**手动路径必须保留**。`open` 之前先探测 PopClip 是否存在，否则 macOS 会弹「没有可打开此文件的应用」这种让人摸不着头脑的错误。
 
 ## 关键约定
 

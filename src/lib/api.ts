@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { ChatMessage, LookupPayload, Provider, Settings } from "./types";
+import type {
+  ChatMessage,
+  InstallOutcome,
+  LookupPayload,
+  Provider,
+  Settings,
+} from "./types";
 
 export const getSettings = () => invoke<Settings>("get_settings");
 
@@ -26,6 +32,13 @@ export const explain = (
 
 export const chatTurn = (streamId: string, messages: ChatMessage[]) =>
   invoke<void>("chat_turn", { streamId, messages });
+
+export const installPopclipExtension = () =>
+  invoke<InstallOutcome>("install_popclip_extension");
+
+export const popclipInstalled = () => invoke<boolean>("popclip_installed");
+
+export const popclipSnippet = () => invoke<string>("popclip_snippet");
 
 export const hidePopup = () => invoke<void>("hide_popup");
 
