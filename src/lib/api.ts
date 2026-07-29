@@ -31,8 +31,7 @@ export const explain = (
   lookupId: string,
   text: string,
   context: string | null,
-  source: "popup" | "main",
-) => invoke<void>("explain", { streamId, lookupId, text, context, source });
+) => invoke<void>("explain", { streamId, lookupId, text, context });
 
 export const chatTurn = (streamId: string, messages: ChatMessage[]) =>
   invoke<void>("chat_turn", { streamId, messages });
@@ -56,8 +55,6 @@ export const installPopclipExtension = () =>
 export const popclipInstalled = () => invoke<boolean>("popclip_installed");
 
 export const popclipSnippet = () => invoke<string>("popclip_snippet");
-
-export const hidePopup = () => invoke<void>("hide_popup");
 
 export const openSettings = () => invoke<void>("open_settings");
 

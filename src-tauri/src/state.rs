@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager};
 
-use crate::popup::LookupPayload;
+use crate::windows::LookupPayload;
 
 #[derive(Default)]
 pub struct AppState {

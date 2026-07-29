@@ -30,7 +30,6 @@ export interface LookupSummary {
   text: string;
   /** 释义里的 senseHere，解析不出来是空串 */
   sense: string;
-  source: "popup" | "main";
   createdAt: number;
 }
 
@@ -41,7 +40,6 @@ export interface LookupDetail {
   context: string | null;
   /** 释义的原始 JSON 字符串，仍走 parsePartialJson，和流式路径共用渲染 */
   explanation: string;
-  source: "popup" | "main";
   createdAt: number;
   turns: ChatMessage[];
 }

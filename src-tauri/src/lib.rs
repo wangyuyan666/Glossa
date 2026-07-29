@@ -2,18 +2,18 @@ mod config;
 mod history;
 mod llm;
 mod popclip;
-mod popup;
 mod prompts;
 mod server;
 mod state;
+mod windows;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 
 use config::{Provider, Role, Settings};
 use llm::{ChatMessage, ChatRequest, Delta};
-use popup::{LookupPayload, MAIN_LABEL, POPUP_LABEL, SETTINGS_LABEL};
 use state::AppState;
+use windows::{LookupPayload, MAIN_LABEL, SETTINGS_LABEL};
 
 /// 前端监听的流式事件名。
 const STREAM_EVENT: &str = "llm-stream";
@@ -111,8 +111,6 @@ struct PersistLookup {
     id: String,
     text: String,
     context: Option<String>,
-    /// "popup" | "main"，标记这次查询从哪个入口发起。
-    source: String,
 }
 
 /// 释义。走 `fast` 角色，输出受提示词约束的 JSON，由前端容错增量解析。
@@ -126,7 +124,6 @@ fn explain(
     lookup_id: String,
     text: String,
     context: Option<String>,
-    source: String,
 ) -> Result<(), String> {
     let settings = config::load(&app);
     let (provider, model) = settings
@@ -151,7 +148,6 @@ fn explain(
         id: lookup_id,
         text,
         context,
-        source,
     };
     spawn_stream(app.clone(), stream_id, provider.clone(), req, Some(persist));
     Ok(())
@@ -227,7 +223,6 @@ fn spawn_stream(
                             &p.text,
                             p.context.as_deref(),
                             &full,
-                            &p.source,
                         ) {
                             Ok(()) => {
                                 let _ = app.emit(HISTORY_EVENT, ());
@@ -251,7 +246,7 @@ fn spawn_stream(
     state::replace_stream(&app, handle);
 }
 
-/// 广播而不是只发给弹窗——主窗口也要收。前端按 streamId 分发，串不了台。
+/// 广播给所有窗口，前端按 streamId 分发。
 fn emit(app: &AppHandle, event: StreamEvent) {
     if let Err(e) = app.emit(STREAM_EVENT, event) {
         eprintln!("[emit] 发送流事件失败: {e}");
@@ -319,20 +314,13 @@ fn popclip_snippet(app: AppHandle) -> String {
 // ---------------------------------------------------------------- 窗口命令
 
 #[tauri::command]
-fn hide_popup(app: AppHandle) -> Result<(), String> {
-    popup::popup_window(&app)
-        .and_then(|w| w.hide().map_err(Into::into))
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 fn open_settings(app: AppHandle) -> Result<(), String> {
-    popup::show_settings(&app).map_err(|e| e.to_string())
+    windows::show_settings(&app).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn open_main(app: AppHandle) -> Result<(), String> {
-    popup::show_main(&app).map_err(|e| e.to_string())
+    windows::show_main(&app).map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------- 入口
@@ -351,14 +339,14 @@ pub fn run() {
 
             // 主窗口是应用的门面，启动就打开。没配模型时它自己会挂提示条引导去设置，
             // 比一上来甩个设置页更符合预期。
-            popup::show_main(&handle)?;
+            windows::show_main(&handle)?;
             Ok(())
         })
         .on_window_event(|window, event| {
-            // 三个窗口都是常驻隐藏，关闭按钮只隐藏不销毁，避免下次用到要重建 webview。
+            // 两个窗口都是常驻隐藏，关闭按钮只隐藏不销毁，避免下次用到要重建 webview。
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let label = window.label();
-                if label == POPUP_LABEL || label == SETTINGS_LABEL || label == MAIN_LABEL {
+                if label == MAIN_LABEL || label == SETTINGS_LABEL {
                     api.prevent_close();
                     let _ = window.hide();
                 }
@@ -381,7 +369,6 @@ pub fn run() {
             install_popclip_extension,
             popclip_installed,
             popclip_snippet,
-            hide_popup,
             open_settings,
             open_main,
         ])
@@ -391,7 +378,7 @@ pub fn run() {
             // 点 Dock 图标要能把主窗口唤回来。窗口是隐藏不销毁的，
             // 没有这段的话关掉主窗口后就再也打不开了。
             if let tauri::RunEvent::Reopen { .. } = event {
-                let _ = popup::show_main(app);
+                let _ = windows::show_main(app);
             }
         });
 }

@@ -4,7 +4,7 @@
 
 ## 这是什么
 
-macOS 上的 LLM 英语学习工具：跨 app 划词 → 光标旁弹窗给释义 → 同窗口多轮追问。
+macOS 上的 LLM 英语学习工具：跨 app 划词 → 主窗口给释义 → 多轮追问 → 落进历史。
 
 产品上的差异化只有一条：**结合上下文的释义**。词典给全部义项，本工具给"这句话里它是什么意思"。任何改动如果削弱这一点，方向就错了。
 
@@ -19,7 +19,7 @@ macOS 上的 LLM 英语学习工具：跨 app 划词 → 光标旁弹窗给释�
 阶段一只为验证「划词 → 释义 → 追问」这套交互，取词层是借来的，随时可换。因此：
 
 - 取词层与其余部分的唯一接口是 `POST /lookup`（`server.rs`），换实现不该动到 UI 与 LLM 层。
-- `LookupPayload.context` 字段现在恒为 `None`，但**链路已经全程打通**（server → popup 事件 → `explain` 命令 → 提示词）。阶段二只需把它填上。
+- `LookupPayload.context` 字段现在恒为 `None`，但**链路已经全程打通**（server → lookup 事件 → `explain` 命令 → 提示词）。阶段二只需把它填上。
 - 提示词里已经分了「有上下文」与「无上下文」两套措辞（`prompts.rs`）。
 
 ## 阶段二 TODO：快捷键取词
@@ -42,10 +42,10 @@ src-tauri/src/capture/
 已经踩明白、别再重新推一遍的坑：
 
 - **AX 的 range 是 UTF-16 code unit 索引**，Rust `String` 是 UTF-8。直接拿 range 当字节偏移切，中英混排必然切在字符中间 panic。要先转 `Vec<u16>` 再切回来。
-- **取词必须在 `popup.show()` 之前**。先显示弹窗会让 EnAssistant 变成前台 app，接着读 AX 就读到我们自己的窗口了。
-- **前台 app 是 EnAssistant 自己时要跳过**（用户在弹窗里手滑按了快捷键）。
+- **取词必须在唤起主窗口之前**。先显示窗口会让 EnAssistant 变成前台 app，接着读 AX 就读到我们自己的窗口了。
+- **前台 app 是 EnAssistant 自己时要跳过**（用户在主窗口里手滑按了快捷键）。
 - **`RegisterEventHotKey` 优先级低**，被系统或其他 app 占用时注册会失败。必须在设置页明确报错，静默失败会让用户以为取词坏了。
-- **TCC 权限按二进制路径 + 签名记账**。`tauri dev` 跑的是 `target/debug/enassistant` 裸二进制而非 `.app` bundle，每次改 Rust 重编都换了二进制，授权可能失效或反复弹窗。AX 相关功能要在 `npm run tauri build` 的产物上验证。这和 deep link 那个坑是同一类问题。
+- **TCC 权限按二进制路径 + 签名记账**。`tauri dev` 跑的是 `target/debug/enassistant` 裸二进制而非 `.app` bundle，每次改 Rust 重编都换了二进制，授权可能失效或反复要权限。AX 相关功能要在 `npm run tauri build` 的产物上验证。这和 deep link 那个坑是同一类问题。
 - 权限只需要**辅助功能**一个。CGEventTap 监听选区还要额外的**输入监控**权限，两次授权流程会明显拉高流失——这也是选快捷键而非选区监听的原因之一。
 
 上下文能力是**尽力而为**：Electron / Chrome 系 app 的 AX 实现参差，`kAXValue` 经常拿不到整段文本；Cmd+C 兜底路径永远拿不到上下文（剪贴板里只有选中内容）。这些情况降级成 `context: None` 即可，提示词本来就分了两套。
@@ -61,7 +61,7 @@ src-tauri/src/
   popclip.rs      PopClip 扩展的生成与安装（package 一键 / snippet 手动）
   config.rs       Settings 结构与磁盘读写（明文 JSON + 0600）
   server.rs       本地取词监听（axum，只绑 127.0.0.1）
-  popup.rs        窗口显示与弹窗的光标定位（三个窗口的 label 常量也在这）
+  windows.rs      窗口显示、label 常量、LookupPayload
   state.rs        跨命令共享状态（暂存查询、当前流的句柄）
   prompts.rs      系统提示词
   llm/
@@ -70,35 +70,35 @@ src-tauri/src/
     anthropic.rs  Anthropic 协议
 
 src/
-  main.tsx        按 URL 的 ?w= 参数分流到三个窗口
+  main.tsx        按 URL 的 ?w= 参数分流到两个窗口
   global.css      主题变量与基础控件样式（含 dark mode）
   lib/
     types.ts      与 Rust 侧一一对应的类型
     api.ts        invoke 的薄封装，所有后端调用都走这里
     stream.ts     llm-stream 事件的单例监听与按 streamId 分发
     jsonish.ts    容错的增量 JSON 解析
-  lookup/         弹窗与主窗口共用的查词逻辑与 UI
+  lookup/         查词逻辑与 UI
     useLookup.ts  一次查询的完整状态机：流式释义 + 多轮追问 + 落库
     LookupView    释义卡片 + 对话的滚动区
     AskBox        追问输入框
-  popup/          弹窗外壳（无边框标题栏）
   main/           主窗口：左历史栏 + 右查词区
   settings/       设置窗口 UI（CaptureSection 是取词那一节）
 ```
 
-## 三个窗口
+## 两个窗口
 
-| label | 用途 | 装饰 |
-| --- | --- | --- |
-| `main` | 主窗口，启动即开 | 有 |
-| `popup` | 划词弹窗，定位到光标旁 | 无边框 |
-| `settings` | 设置 | 有 |
+| label | 用途 |
+| --- | --- |
+| `main` | 主窗口：左历史栏 + 右查词区。启动即开，划词也唤它 |
+| `settings` | 设置 |
 
-都是启动时建好、平时隐藏，关闭按钮只 `hide()` 不销毁（`lib.rs` 的 `on_window_event`），避免下次用到要重建 webview。因此 `RunEvent::Reopen` 必须处理——不然主窗口关掉后点 Dock 图标就再也打不开了。
+曾经有第三个 `popup` 窗口（无边框、定位到光标旁）。删掉了：划词直接唤主窗口，界面收敛成两个。**别再加回来**——如果要做轻量浮层，先想清楚它和主窗口的分工，以及跨 Space 时 `set_focus` 会切换桌面这件事。
 
-**查词逻辑只有一份**：`useLookup` + `LookupView` 被弹窗和主窗口共用，只有外壳和输入框位置不同。两边各写一遍的话行为迟早走偏。
+窗口都是启动时建好、平时隐藏，关闭按钮只 `hide()` 不销毁（`lib.rs` 的 `on_window_event`），避免下次用到要重建 webview。因此 `RunEvent::Reopen` 必须处理——不然主窗口关掉后点 Dock 图标就再也打不开了。
 
-流式事件用 `app.emit()` **广播**给所有窗口，不是 `emit_to(POPUP_LABEL, ..)`——主窗口也要收。前端按 `streamId` 分发，串不了台。
+划词的载荷经 `windows::present()` 送到主窗口。冷启动时事件可能早于 React 挂载，所以 `state.rs` 里留了一份暂存，`Main` 挂载时主动 `takePendingLookup()` 兜一次。
+
+流式事件用 `app.emit()` **广播**，前端按 `streamId` 分发。
 
 ## 历史存储
 
@@ -107,7 +107,7 @@ src/
 选 SQLite 不选 JSON 是为了路线图：生词本 + FSRS 复习要按到期时间查、按熟练度排序，那必须有真正的存储层。
 
 ```sql
-lookups(id, text, context, explanation, source, created_at)
+lookups(id, text, context, explanation, created_at)
 turns(id, lookup_id → lookups.id ON DELETE CASCADE, seq, role, content)
 ```
 
@@ -172,7 +172,7 @@ turns(id, lookup_id → lookups.id ON DELETE CASCADE, seq, role, content)
                                           │ spawn 后台任务
                                           ▼
                               llm::stream ──mpsc──> forwarder
-                                                        │ emit_to("popup", "llm-stream")
+                                                        │ emit("llm-stream")
                                                         ▼
                         stream.ts 按 streamId 分发 ──> onDelta / onDone / onError
 ```
@@ -192,8 +192,7 @@ cd src-tauri && cargo test
 
 现有测试覆盖两处纯逻辑，都是真机上不好复现的：
 
-- `popup.rs` 的 `place()` — 弹窗越界钳制。真机没法把鼠标挪到屏幕角落来测。
-  **注意 `cursor_position()` 返回物理坐标而 `monitor_from_point()` 收逻辑坐标**，混用会让光标偏下时找不到显示器，钳制被静默跳过，弹窗掉出屏幕。
+- `history.rs` 的 `migrate()` — 含老库迁移（曾有过一个 `source` 列，记查询从弹窗还是主窗口发起；弹窗删掉后该列失去意义且是 NOT NULL，会让新的 INSERT 失败，所以必须真删）。
 - `jsonish.ts` 的 `parsePartialJson()` — 半截 JSON 的容错解析。
 
 不接真 key 也能验证两条协议：起一个 mock SSE 端点，把 provider 的 `baseUrl` 指过去即可。

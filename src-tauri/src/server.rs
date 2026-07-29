@@ -13,7 +13,7 @@ use axum::Router;
 use serde::Deserialize;
 use tauri::AppHandle;
 
-use crate::popup::{self, LookupPayload};
+use crate::windows::{self, LookupPayload};
 
 #[derive(Deserialize)]
 pub struct LookupParams {
@@ -72,10 +72,10 @@ fn handle(app: &AppHandle, params: LookupParams) -> (StatusCode, &'static str) {
     // 前端可能还没挂上监听（冷启动首次查询），先存一份供其挂载后主动取。
     crate::state::set_pending_lookup(app, payload.clone());
 
-    match popup::present(app, &payload) {
+    match windows::present(app, &payload) {
         Ok(()) => (StatusCode::OK, "ok"),
         Err(e) => {
-            eprintln!("[server] 弹窗失败: {e}");
+            eprintln!("[server] 唤起主窗口失败: {e}");
             (StatusCode::INTERNAL_SERVER_ERROR, "failed")
         }
     }

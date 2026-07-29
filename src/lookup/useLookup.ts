@@ -7,9 +7,6 @@ import type { ChatMessage, Explanation, LookupDetail } from "../lib/types";
 
 export type Phase = "idle" | "explaining" | "ready" | "error";
 
-/** 查询的发起入口，落库时记下来。 */
-export type Source = "popup" | "main";
-
 /** 把释义卡片压成一段自然语言，作为追问会话的第一条 assistant 消息。 */
 function explanationAsText(exp: Partial<Explanation>, fallback: string): string {
   const lines: string[] = [];
@@ -25,12 +22,8 @@ function lookupAsText(text: string, context: string | null): string {
   return context ? `选中的词：${text}\n\n所在原句：${context}` : `选中的词：${text}`;
 }
 
-/**
- * 一次查询的完整状态机：释义流式渲染 + 多轮追问。
- *
- * 弹窗和主窗口共用这一份——两边各写一遍的话，行为迟早会走偏。
- */
-export function useLookup(source: Source) {
+/** 一次查询的完整状态机：释义流式渲染 + 多轮追问 + 落库。 */
+export function useLookup() {
   const [word, setWord] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +62,7 @@ export function useLookup(source: Source) {
 
       let acc = "";
       cancelRef.current = startStream(
-        (streamId) => api.explain(streamId, lookupId, text, context, source),
+        (streamId) => api.explain(streamId, lookupId, text, context),
         {
           onDelta: (delta) => {
             acc += delta;
@@ -93,7 +86,7 @@ export function useLookup(source: Source) {
         },
       );
     },
-    [reset, source],
+    [reset],
   );
 
   /** 从历史里恢复一次查询，不重新请求 LLM。 */

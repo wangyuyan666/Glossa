@@ -3,7 +3,7 @@
 //! SQLite 而不是 JSON：路线图上的生词本 + FSRS 复习需要按到期时间查、按熟练度排序，
 //! 那必须有真正的存储层。现在用 JSON、之后再迁移等于白做一遍。
 //!
-//! 两个入口（弹窗划词、主窗口输入）都落库，否则历史只记一半，日常主力入口反而没记录。
+//! 划词和主窗口输入走的是同一条查询路径，都落库。
 //!
 //! 这是**历史流水**，不是词表：同一个词查两次记两条。去重是生词本的事。
 
@@ -27,7 +27,6 @@ pub struct LookupSummary {
     pub text: String,
     /// 释义里的 senseHere，解析不出来就是空串。侧栏拿它当副标题。
     pub sense: String,
-    pub source: String,
     pub created_at: i64,
 }
 
@@ -40,7 +39,6 @@ pub struct LookupDetail {
     pub context: Option<String>,
     /// 释义的原始 JSON 字符串，前端仍用 parsePartialJson 解析，和流式路径共用一套渲染。
     pub explanation: String,
-    pub source: String,
     pub created_at: i64,
     pub turns: Vec<Turn>,
 }
@@ -83,7 +81,6 @@ fn migrate(conn: &Connection) -> Result<()> {
             text        TEXT NOT NULL,
             context     TEXT,
             explanation TEXT NOT NULL,
-            source      TEXT NOT NULL,
             created_at  INTEGER NOT NULL
         );
 
@@ -100,7 +97,18 @@ fn migrate(conn: &Connection) -> Result<()> {
         "#,
     )
     .context("建表失败")?;
+
+    drop_legacy_source_column(conn);
     Ok(())
+}
+
+/// `source` 列曾用来区分查询是从弹窗还是主窗口发起的。弹窗删掉后所有查询都落在主窗口，
+/// 这个区分没有意义了。
+///
+/// 老库里这一列是 NOT NULL，留着会让新的 INSERT 失败，所以必须真的删掉。
+/// 新建的库没有这一列，DROP 会报错——忽略即可，这里只关心「执行完之后没有这一列」。
+fn drop_legacy_source_column(conn: &Connection) {
+    let _ = conn.execute_batch("ALTER TABLE lookups DROP COLUMN source;");
 }
 
 pub fn now_ms() -> i64 {
@@ -133,12 +141,11 @@ pub fn save_lookup(
     text: &str,
     context: Option<&str>,
     explanation: &str,
-    source: &str,
 ) -> Result<()> {
     history.conn()?.execute(
-        "INSERT OR REPLACE INTO lookups (id, text, context, explanation, source, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![id, text, context, explanation, source, now_ms()],
+        "INSERT OR REPLACE INTO lookups (id, text, context, explanation, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![id, text, context, explanation, now_ms()],
     )?;
     Ok(())
 }
@@ -172,7 +179,7 @@ pub fn list(
         .map(|q| format!("%{q}%"));
 
     let mut stmt = conn.prepare(
-        "SELECT id, text, explanation, source, created_at
+        "SELECT id, text, explanation, created_at
            FROM lookups
           WHERE (?1 IS NULL OR text LIKE ?1)
           ORDER BY created_at DESC
@@ -185,8 +192,7 @@ pub fn list(
             id: row.get(0)?,
             text: row.get(1)?,
             sense: extract_sense(&explanation),
-            source: row.get(3)?,
-            created_at: row.get(4)?,
+            created_at: row.get(3)?,
         })
     })?;
 
@@ -196,9 +202,8 @@ pub fn list(
 pub fn get(history: &History, id: &str) -> Result<Option<LookupDetail>> {
     let conn = history.conn()?;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, text, context, explanation, source, created_at FROM lookups WHERE id = ?1",
-    )?;
+    let mut stmt = conn
+        .prepare("SELECT id, text, context, explanation, created_at FROM lookups WHERE id = ?1")?;
     let mut rows = stmt.query(params![id])?;
     let Some(row) = rows.next()? else {
         return Ok(None);
@@ -209,8 +214,7 @@ pub fn get(history: &History, id: &str) -> Result<Option<LookupDetail>> {
         text: row.get(1)?,
         context: row.get(2)?,
         explanation: row.get(3)?,
-        source: row.get(4)?,
-        created_at: row.get(5)?,
+        created_at: row.get(4)?,
         turns: Vec::new(),
     };
     drop(rows);
@@ -258,7 +262,7 @@ mod tests {
 
     fn seed(history: &History, id: &str, text: &str, sense: &str) {
         let explanation = format!(r#"{{"word":"{text}","senseHere":"{sense}"}}"#);
-        save_lookup(history, id, text, None, &explanation, "main").unwrap();
+        save_lookup(history, id, text, None, &explanation).unwrap();
     }
 
     #[test]
@@ -285,7 +289,7 @@ mod tests {
     fn survives_an_unparsable_explanation() {
         let h = memory_history();
         // 模型输出被截断的情况，副标题取不到，但历史本身必须存得进去。
-        save_lookup(&h, "a", "take on", None, "{\"word\":\"take", "popup").unwrap();
+        save_lookup(&h, "a", "take on", None, "{\"word\":\"take").unwrap();
         let items = list(&h, 10, 0, None).unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].sense, "");
@@ -300,7 +304,6 @@ mod tests {
             "take on",
             None,
             "```json\n{\"senseHere\":\"承担\"}\n```",
-            "main",
         )
         .unwrap();
         assert_eq!(list(&h, 10, 0, None).unwrap()[0].sense, "承担");
@@ -364,6 +367,33 @@ mod tests {
     #[test]
     fn get_returns_none_for_unknown_id() {
         assert!(get(&memory_history(), "nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn migrates_a_legacy_db_that_still_has_the_source_column() {
+        // 老库的 source 是 NOT NULL：不删掉的话，新代码的 INSERT 会因缺列而失败。
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE lookups (
+                id          TEXT PRIMARY KEY,
+                text        TEXT NOT NULL,
+                context     TEXT,
+                explanation TEXT NOT NULL,
+                source      TEXT NOT NULL,
+                created_at  INTEGER NOT NULL
+            );
+            INSERT INTO lookups VALUES ('old', 'take on', NULL, '{}', 'popup', 1);
+            "#,
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+        let h = History(Mutex::new(conn));
+
+        // 老数据还在，新数据也写得进去。
+        save_lookup(&h, "new", "resilient", None, "{}").unwrap();
+        assert_eq!(list(&h, 10, 0, None).unwrap().len(), 2);
     }
 
     #[test]

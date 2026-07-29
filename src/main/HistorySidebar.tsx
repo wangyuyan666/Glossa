@@ -68,10 +68,7 @@ export function HistorySidebar({
             <button type="button" className="entry__main" onClick={() => onPick(item.id)}>
               <span className="entry__word">{item.text}</span>
               {item.sense && <span className="entry__sense">{item.sense}</span>}
-              <span className="entry__meta">
-                {relativeTime(item.createdAt)}
-                {item.source === "popup" && " · 划词"}
-              </span>
+              <span className="entry__meta">{relativeTime(item.createdAt)}</span>
             </button>
             <button
               type="button"

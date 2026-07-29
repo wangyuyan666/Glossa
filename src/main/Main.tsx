@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 import * as api from "../lib/api";
+import type { LookupPayload } from "../lib/types";
 import { AskBox } from "../lookup/AskBox";
 import { LookupView } from "../lookup/LookupView";
 import { useLookup } from "../lookup/useLookup";
@@ -9,8 +11,9 @@ import "../lookup/lookup.css";
 import "./main.css";
 
 export function Main() {
-  const lookup = useLookup("main");
+  const lookup = useLookup();
   const history = useHistory();
+  const { start } = lookup;
 
   const [input, setInput] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -20,8 +23,25 @@ export function Main() {
     void api.getSettings().then((s) => setConfigured(s.fast !== null));
   }, []);
 
-  // 侧栏的刷新统一由后端的 history-updated 广播驱动（见 useHistory），
-  // 本窗口和弹窗的查询都能覆盖到，这里不用再单独盯 phase。
+  // 划词触发的查询。冷启动时事件可能早于本组件挂载，所以先主动取一次暂存的。
+  useEffect(() => {
+    void api.takePendingLookup().then((payload) => {
+      if (payload) {
+        setActiveId(null);
+        start(payload.text, payload.context);
+      }
+    });
+
+    const unlisten = listen<LookupPayload>("lookup", ({ payload }) => {
+      setActiveId(null);
+      start(payload.text, payload.context);
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [start]);
+
+  // 侧栏的刷新由后端的 history-updated 广播驱动，见 useHistory。
 
   const submit = () => {
     const text = input.trim();
