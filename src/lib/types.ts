@@ -57,8 +57,14 @@ export interface LookupPayload {
   context: string | null;
 }
 
-/** 释义卡片。流式期间为部分字段，故全部可选。 */
+/**
+ * 释义卡片。流式期间为部分字段，故用处都是 `Partial<Explanation>`。
+ *
+ * 单词和句子是两套字段，Rust 侧按选中内容长度决定用哪套提示词（见 prompts.rs 的
+ * `is_sentence`）。卡片按字段存在性渲染，不需要额外的模式标记。
+ */
 export interface Explanation {
+  // ---- 单词 / 短语 ----
   word: string;
   phonetic: string;
   pos: string;
@@ -66,6 +72,11 @@ export interface Explanation {
   why: string;
   collocations: string[];
   example: { en: string; zh: string };
+
+  // ---- 句子 ----
+  translation: string;
+  structure: string;
+  keyPoints: { term: string; note: string }[];
 }
 
 export interface ChatMessage {

@@ -135,6 +135,7 @@ fn explain(
         system: Some(prompts::explain_system(
             &settings.native_language,
             context.as_deref(),
+            prompts::is_sentence(&text),
         )),
         messages: vec![ChatMessage {
             role: "user".into(),

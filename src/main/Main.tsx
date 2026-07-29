@@ -98,7 +98,7 @@ export function Main() {
         <div className="workspace__query">
           <input
             value={input}
-            placeholder="输入单词或短语，回车查询"
+            placeholder="输入单词、短语或整句，回车查询"
             autoFocus
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {

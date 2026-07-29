@@ -7,19 +7,31 @@ import type { ChatMessage, Explanation, LookupDetail } from "../lib/types";
 
 export type Phase = "idle" | "explaining" | "ready" | "error";
 
-/** 把释义卡片压成一段自然语言，作为追问会话的第一条 assistant 消息。 */
+/**
+ * 把释义卡片压成一段自然语言，作为追问会话的第一条 assistant 消息。
+ *
+ * 单词和句子两套字段都要覆盖，否则句子查询的追问会丢掉上文。
+ */
 function explanationAsText(exp: Partial<Explanation>, fallback: string): string {
   const lines: string[] = [];
+
   if (exp.word) lines.push(`${exp.word} ${exp.phonetic ?? ""} ${exp.pos ?? ""}`.trim());
   if (exp.senseHere) lines.push(exp.senseHere);
   if (exp.why) lines.push(exp.why);
   if (exp.collocations?.length) lines.push(`常见搭配：${exp.collocations.join("、")}`);
   if (exp.example?.en) lines.push(`例句：${exp.example.en} — ${exp.example.zh ?? ""}`);
+
+  if (exp.translation) lines.push(`译文：${exp.translation}`);
+  if (exp.structure) lines.push(exp.structure);
+  if (exp.keyPoints?.length) {
+    lines.push(exp.keyPoints.map((p) => `${p.term}：${p.note}`).join("\n"));
+  }
+
   return lines.length ? lines.join("\n") : fallback;
 }
 
 function lookupAsText(text: string, context: string | null): string {
-  return context ? `选中的词：${text}\n\n所在原句：${context}` : `选中的词：${text}`;
+  return context ? `选中的内容：${text}\n\n所在原句：${context}` : `选中的内容：${text}`;
 }
 
 /** 一次查询的完整状态机：释义流式渲染 + 多轮追问 + 落库。 */

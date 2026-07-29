@@ -19,7 +19,7 @@ interface Props {
  * 主窗口在顶部，位置不一样。
  */
 export function LookupView({ lookup, idleHint }: Props) {
-  const { phase, error, raw, explanation, turns, answering } = lookup;
+  const { word, phase, error, raw, explanation, turns, answering } = lookup;
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,6 +29,10 @@ export function LookupView({ lookup, idleHint }: Props) {
   return (
     <div className="lookup" ref={bodyRef}>
       {phase === "idle" && <p className="lookup__hint">{idleHint}</p>}
+
+      {/* 回显查询原文。划词进来的内容用户不一定记得自己选中了什么，
+          句子模式下尤其需要对照着看。 */}
+      {phase !== "idle" && word && <p className="lookup__query">{word}</p>}
 
       {phase === "error" && (
         <div className="lookup__error">

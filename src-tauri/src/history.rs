@@ -118,7 +118,7 @@ pub fn now_ms() -> i64 {
         .unwrap_or_default()
 }
 
-/// 从释义 JSON 里取 senseHere 当侧栏副标题。
+/// 从释义 JSON 里取侧栏副标题：单词模式用 `senseHere`，句子模式用 `translation`。
 ///
 /// 模型可能给 JSON 裹上代码块、也可能整个输出不合法——取不到就返回空串，
 /// 不该因为副标题解析失败就让整条历史存不进去。
@@ -129,10 +129,14 @@ fn extract_sense(explanation: &str) -> String {
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
-    serde_json::from_str::<serde_json::Value>(trimmed)
-        .ok()
-        .and_then(|v| v["senseHere"].as_str().map(str::to_string))
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+        return String::new();
+    };
+    ["senseHere", "translation"]
+        .iter()
+        .find_map(|key| value[*key].as_str().filter(|s| !s.is_empty()))
         .unwrap_or_default()
+        .to_string()
 }
 
 pub fn save_lookup(
@@ -367,6 +371,21 @@ mod tests {
     #[test]
     fn get_returns_none_for_unknown_id() {
         assert!(get(&memory_history(), "nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn falls_back_to_translation_for_sentence_lookups() {
+        let h = memory_history();
+        // 句子模式的释义没有 senseHere，副标题得取 translation，否则侧栏那一行是空的。
+        save_lookup(
+            &h,
+            "a",
+            "I get it.",
+            None,
+            r#"{"translation":"我明白了。","structure":"..."}"#,
+        )
+        .unwrap();
+        assert_eq!(list(&h, 10, 0, None).unwrap()[0].sense, "我明白了。");
     }
 
     #[test]

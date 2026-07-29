@@ -85,6 +85,25 @@ src/
   settings/       设置窗口 UI（CaptureSection 是取词那一节）
 ```
 
+## 单词模式与句子模式
+
+选中一整句时，输出必须是**整句翻译 + 难点**，不能退化成挑一个词解释。
+
+判定在 Rust 侧（`prompts.rs` 的 `is_sentence`），不交给模型——确定性、可单测、不多花一次调用。规则：六个词以上，或三词以上且带句末标点。
+
+两套提示词、两套 JSON 结构：
+
+| | 单词 / 短语 | 句子 |
+| --- | --- | --- |
+| 字段 | `word` `phonetic` `pos` `senseHere` `why` `collocations[]` `example` | `translation` `structure` `keyPoints[{term,note}]` |
+| 上下文 | 用 `context` 定位此处义项 | 不用——句子本身就是自己的上下文 |
+
+**别把两套字段合成一套。** 句子走单词 schema 时，`word`（词条原形）/`phonetic`/`pos` 会逼着模型从句子里挑一个词来填，症状就是「选了一整句却只翻译其中一个单词」。这是本项目实际踩过的 bug。
+
+前端 `ExplanationCard` 按字段存在性分流，不需要额外的模式标记——`parsePartialJson` 返回的本来就是部分对象，流式渲染天然继续工作。
+
+`history.rs` 的 `extract_sense` 取侧栏副标题时 `senseHere` → `translation` 依次回退，否则句子记录在侧栏是空的一行。
+
 ## 两个窗口
 
 | label | 用途 |

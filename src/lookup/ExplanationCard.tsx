@@ -10,6 +10,8 @@ interface Props {
 /**
  * 释义卡片。字段是流式逐个到齐的，所以每块都独立判空——
  * 不能等整份 JSON 收完再渲染，那样就没有"边收边看"的效果了。
+ *
+ * 单词和句子两套字段，按存在性分流：模型先吐哪个字段就先渲染哪套。
  */
 export function ExplanationCard({ explanation, streaming, raw }: Props) {
   // 还没解析出任何字段：显示骨架屏，而不是空白或原始 JSON 碎片。
@@ -25,13 +27,50 @@ export function ExplanationCard({ explanation, streaming, raw }: Props) {
     );
   }
 
-  const { phonetic, pos, senseHere, why, collocations, example } = explanation;
+  const isSentence =
+    !!explanation.translation || !!explanation.structure || !!explanation.keyPoints?.length;
+
+  return (
+    <div className={`card${streaming ? " card--streaming" : ""}`}>
+      {isSentence ? <SentenceBody {...explanation} /> : <WordBody {...explanation} />}
+    </div>
+  );
+}
+
+function SentenceBody({ translation, structure, keyPoints }: Partial<Explanation>) {
+  return (
+    <>
+      {translation && <p className="card__sense">{translation}</p>}
+      {structure && <p className="card__why">{structure}</p>}
+
+      {!!keyPoints?.length && (
+        <dl className="card__points">
+          {keyPoints.map((point, i) => (
+            <div key={i} className="card__point">
+              <dt>{point.term}</dt>
+              <dd>{point.note}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </>
+  );
+}
+
+function WordBody({
+  phonetic,
+  pos,
+  senseHere,
+  why,
+  collocations,
+  example,
+}: Partial<Explanation>) {
   // 提示词没规定音标带不带斜杠，模型两种都给。统一剥掉再由我们包，
   // 否则自带斜杠的会显示成 //rɪˈzɪliənt//。
   const barePhonetic = phonetic?.trim().replace(/^\/+|\/+$/g, "");
 
   return (
-    <div className={`card${streaming ? " card--streaming" : ""}`}>
+    <>
       {(barePhonetic || pos) && (
         <p className="card__meta">
           {barePhonetic && <span className="card__phonetic">/{barePhonetic}/</span>}
@@ -56,6 +95,6 @@ export function ExplanationCard({ explanation, streaming, raw }: Props) {
           {example.zh && <p className="card__example-zh">{example.zh}</p>}
         </blockquote>
       )}
-    </div>
+    </>
   );
 }

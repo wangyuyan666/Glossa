@@ -15,6 +15,18 @@
   margin: 0;
 }
 
+/* 查询原文。用引用式的样式和下方释义区分开——这是"你问的"，不是"答案"。 */
+.lookup__query {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .lookup__error p {
   color: var(--danger);
   margin: 0 0 8px;
@@ -73,6 +85,25 @@
   border: 1px solid var(--border);
   border-radius: 999px;
   font-size: 12px;
+}
+
+/* 句子模式的难点列表 */
+.card__points {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.card__point dt {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.card__point dd {
+  margin: 1px 0 0;
+  color: var(--fg-muted);
+  font-size: 13px;
 }
 
 .card__example {
