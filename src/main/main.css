@@ -1,0 +1,150 @@
+.app {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  height: 100%;
+}
+
+/* ---- 左侧历史栏 ---- */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-sunken);
+}
+
+.sidebar__search {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar__search input {
+  width: 100%;
+}
+
+.sidebar__list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+}
+
+.sidebar__empty {
+  padding: 16px 10px;
+  color: var(--fg-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.entry {
+  display: flex;
+  align-items: stretch;
+  border-radius: 6px;
+}
+
+.entry:hover {
+  background: var(--bg);
+}
+
+.entry--active {
+  background: var(--bg);
+  outline: 1px solid var(--accent);
+}
+
+.entry__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 9px;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+.entry__word {
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry__sense {
+  font-size: 12px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry__meta {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/* 删除按钮平时不占视觉重量，悬停整条才出现 */
+.entry__delete {
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  opacity: 0;
+}
+
+.entry:hover .entry__delete {
+  opacity: 1;
+}
+
+.entry__delete:hover {
+  color: var(--danger);
+}
+
+.sidebar__footer {
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar__footer button {
+  flex: 1;
+  font-size: 13px;
+}
+
+/* ---- 右侧查词区 ---- */
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace__query {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace__query input {
+  flex: 1;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.banner span {
+  flex: 1;
+}

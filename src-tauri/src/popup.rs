@@ -6,6 +6,7 @@ use tauri::{AppHandle, Emitter, LogicalPosition, Manager, WebviewWindow};
 
 pub const POPUP_LABEL: &str = "popup";
 pub const SETTINGS_LABEL: &str = "settings";
+pub const MAIN_LABEL: &str = "main";
 
 /// 光标与弹窗左上角的偏移，避免窗口正好压住选区。
 const CURSOR_OFFSET_X: f64 = 16.0;
@@ -126,14 +127,23 @@ fn position_at_cursor(app: &AppHandle, window: &WebviewWindow) -> Result<()> {
     Ok(())
 }
 
-pub fn show_settings(app: &AppHandle) -> Result<()> {
+/// 显示并聚焦某个常驻窗口。窗口都是启动时建好、平时隐藏，这里只负责唤出来。
+pub fn show_window(app: &AppHandle, label: &str) -> Result<()> {
     let window = app
-        .get_webview_window(SETTINGS_LABEL)
-        .context("找不到 settings 窗口")?;
+        .get_webview_window(label)
+        .with_context(|| format!("找不到 {label} 窗口"))?;
     window.show()?;
     window.unminimize().ok();
     window.set_focus()?;
     Ok(())
+}
+
+pub fn show_settings(app: &AppHandle) -> Result<()> {
+    show_window(app, SETTINGS_LABEL)
+}
+
+pub fn show_main(app: &AppHandle) -> Result<()> {
+    show_window(app, MAIN_LABEL)
 }
 
 #[cfg(test)]

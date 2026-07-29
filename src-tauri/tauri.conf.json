@@ -12,6 +12,19 @@
   "app": {
     "windows": [
       {
+        "label": "main",
+        "url": "index.html?w=main",
+        "title": "EnAssistant",
+        "width": 980,
+        "height": 680,
+        "minWidth": 720,
+        "minHeight": 480,
+        "resizable": true,
+        "decorations": true,
+        "visible": false,
+        "center": true
+      },
+      {
         "label": "popup",
         "url": "index.html?w=popup",
         "title": "EnAssistant",

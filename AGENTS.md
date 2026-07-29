@@ -57,10 +57,11 @@ src-tauri/src/capture/
 ```
 src-tauri/src/
   lib.rs          Tauri Builder、全部 #[tauri::command]、流式事件的编排
+  history.rs      查询历史（SQLite）
   popclip.rs      PopClip 扩展的生成与安装（package 一键 / snippet 手动）
   config.rs       Settings 结构与磁盘读写（明文 JSON + 0600）
   server.rs       本地取词监听（axum，只绑 127.0.0.1）
-  popup.rs        弹窗显示与光标定位
+  popup.rs        窗口显示与弹窗的光标定位（三个窗口的 label 常量也在这）
   state.rs        跨命令共享状态（暂存查询、当前流的句柄）
   prompts.rs      系统提示词
   llm/
@@ -69,16 +70,62 @@ src-tauri/src/
     anthropic.rs  Anthropic 协议
 
 src/
-  main.tsx        按 URL 的 ?w= 参数分流到两个窗口
+  main.tsx        按 URL 的 ?w= 参数分流到三个窗口
   global.css      主题变量与基础控件样式（含 dark mode）
   lib/
     types.ts      与 Rust 侧一一对应的类型
     api.ts        invoke 的薄封装，所有后端调用都走这里
     stream.ts     llm-stream 事件的单例监听与按 streamId 分发
     jsonish.ts    容错的增量 JSON 解析
-  popup/          弹窗 UI
+  lookup/         弹窗与主窗口共用的查词逻辑与 UI
+    useLookup.ts  一次查询的完整状态机：流式释义 + 多轮追问 + 落库
+    LookupView    释义卡片 + 对话的滚动区
+    AskBox        追问输入框
+  popup/          弹窗外壳（无边框标题栏）
+  main/           主窗口：左历史栏 + 右查词区
   settings/       设置窗口 UI（CaptureSection 是取词那一节）
 ```
+
+## 三个窗口
+
+| label | 用途 | 装饰 |
+| --- | --- | --- |
+| `main` | 主窗口，启动即开 | 有 |
+| `popup` | 划词弹窗，定位到光标旁 | 无边框 |
+| `settings` | 设置 | 有 |
+
+都是启动时建好、平时隐藏，关闭按钮只 `hide()` 不销毁（`lib.rs` 的 `on_window_event`），避免下次用到要重建 webview。因此 `RunEvent::Reopen` 必须处理——不然主窗口关掉后点 Dock 图标就再也打不开了。
+
+**查词逻辑只有一份**：`useLookup` + `LookupView` 被弹窗和主窗口共用，只有外壳和输入框位置不同。两边各写一遍的话行为迟早走偏。
+
+流式事件用 `app.emit()` **广播**给所有窗口，不是 `emit_to(POPUP_LABEL, ..)`——主窗口也要收。前端按 `streamId` 分发，串不了台。
+
+## 历史存储
+
+`history.rs`，SQLite 在 `~/Library/Application Support/EnAssistant/history.db`。
+
+选 SQLite 不选 JSON 是为了路线图：生词本 + FSRS 复习要按到期时间查、按熟练度排序，那必须有真正的存储层。
+
+```sql
+lookups(id, text, context, explanation, source, created_at)
+turns(id, lookup_id → lookups.id ON DELETE CASCADE, seq, role, content)
+```
+
+- `explanation` 存**释义的原始 JSON 字符串**，不拆字段。前端恢复历史时仍走 `parsePartialJson`，和流式路径共用同一套渲染——模型输出被截断的旧记录也能正常显示。
+- 级联删除依赖 `PRAGMA foreign_keys = ON`，这句在 `migrate()` 里，别删。
+- 这是**历史流水**不是词表：同一个词查两次记两条。去重是生词本的事。
+
+**落库时机**：
+
+| | 谁写 | 何时 |
+| --- | --- | --- |
+| 释义 | Rust（`spawn_stream`） | 流成功结束时。全文本来就在 Rust 手里，不用让前端传回来 |
+| 追问的提问 | 前端 | 发起请求**前**。它和流的成败无关，流挂了问题也该留着 |
+| 追问的回答 | 前端 | 流成功结束后 |
+
+`lookupId` 由前端生成并传给 `explain`，追问用同一个 id 往 `turns` 追加，所以一条历史点开就是完整会话。
+
+落库失败只记日志，不影响用户看到释义。
 
 ## PopClip 的两种安装形式
 

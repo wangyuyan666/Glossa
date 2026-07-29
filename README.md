@@ -95,12 +95,31 @@ shell script: curl -s -X POST http://127.0.0.1:8765/lookup --data-urlencode "q=$
 
 > 为什么用本地端口而不是 `enassistant://` deep link：macOS 不支持运行时注册 URL scheme，deep link 只有装到 `/Applications` 的打包 .app 才能测，`tauri dev` 下没法调试。另外 PopClip 的 url action 会顺带打开浏览器标签页。
 
+## 主窗口
+
+启动后打开的就是主窗口，左边历史、右边查词。
+
+- 顶部输入框直接敲单词或短语，回车查询
+- 左侧列出所有查过的词，倒序。点一条恢复**整个会话**——释义加当时的全部追问，不重新请求模型
+- 搜索框按词模糊匹配
+- 悬停某条记录出现删除按钮；底部可清空全部
+
+划词查的词也会进历史，标记「划词」。关掉主窗口后点 Dock 图标可以唤回。
+
+## 历史存在哪
+
+```
+~/Library/Application Support/EnAssistant/history.db
+```
+
+SQLite。这是**历史流水**不是词表：同一个词查两次记两条。
+
 ## 快捷键
 
 | 键 | 作用 |
 | --- | --- |
+| `Enter` | 主窗口查询 / 发送追问 |
 | `Esc` | 收起弹窗 |
-| `Enter` | 发送追问 |
 
 ## 安全说明
 

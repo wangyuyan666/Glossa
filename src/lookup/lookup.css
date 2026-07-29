@@ -1,0 +1,177 @@
+/* 释义卡片 + 追问对话。弹窗和主窗口共用。 */
+
+.lookup {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lookup__hint {
+  color: var(--fg-muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.lookup__error p {
+  color: var(--danger);
+  margin: 0 0 8px;
+  word-break: break-word;
+}
+
+/* ---- 释义卡片 ---- */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card--raw {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.card__meta {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+.card__pos {
+  font-style: italic;
+}
+
+.card__sense {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.card__why {
+  margin: 0;
+  color: var(--fg-muted);
+}
+
+.card__collocations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card__collocations li {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.card__example {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--accent);
+  background: var(--bg-sunken);
+  border-radius: 0 6px 6px 0;
+}
+
+.card__example p {
+  margin: 0;
+}
+
+.card__example-zh {
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+/* 骨架屏：LLM 有延迟，查询后必须立刻有反馈 */
+.card--skeleton {
+  gap: 10px;
+}
+
+.card--skeleton span {
+  display: block;
+  height: 12px;
+  border-radius: 4px;
+  background: var(--bg-sunken);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.card--skeleton span:nth-child(1) {
+  width: 30%;
+}
+.card--skeleton span:nth-child(2) {
+  width: 85%;
+}
+.card--skeleton span:nth-child(3) {
+  width: 60%;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ---- 追问 ---- */
+
+.turn {
+  font-size: 14px;
+}
+
+.turn--user {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.turn--user p {
+  margin: 0;
+}
+
+.turn--assistant > :first-child {
+  margin-top: 0;
+}
+
+.turn--assistant > :last-child {
+  margin-bottom: 0;
+}
+
+.turn--assistant ul,
+.turn--assistant ol {
+  padding-left: 20px;
+}
+
+.dots {
+  color: var(--fg-muted);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+/* ---- 追问输入框 ---- */
+
+.askbox {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sunken);
+}
+
+.askbox input {
+  flex: 1;
+}

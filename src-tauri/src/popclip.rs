@@ -20,7 +20,10 @@ use crate::config;
 pub const EXTENSION_DIR_NAME: &str = "EnAssistant.popclipext";
 
 /// PopClip 可能被装在这几个位置。Setapp 版路径和常规版不同。
-const POPCLIP_PATHS: [&str; 2] = ["/Applications/PopClip.app", "/Applications/Setapp/PopClip.app"];
+const POPCLIP_PATHS: [&str; 2] = [
+    "/Applications/PopClip.app",
+    "/Applications/Setapp/PopClip.app",
+];
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]

@@ -24,6 +24,28 @@ export interface Settings {
   nativeLanguage: string;
 }
 
+/** 侧栏列表项，不含对话内容 */
+export interface LookupSummary {
+  id: string;
+  text: string;
+  /** 释义里的 senseHere，解析不出来是空串 */
+  sense: string;
+  source: "popup" | "main";
+  createdAt: number;
+}
+
+/** 点开历史时加载的完整会话 */
+export interface LookupDetail {
+  id: string;
+  text: string;
+  context: string | null;
+  /** 释义的原始 JSON 字符串，仍走 parsePartialJson，和流式路径共用渲染 */
+  explanation: string;
+  source: "popup" | "main";
+  createdAt: number;
+  turns: ChatMessage[];
+}
+
 export interface InstallOutcome {
   /** 生成的 .popclipext 目录路径 */
   path: string;

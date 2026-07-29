@@ -26,12 +26,15 @@ export function ExplanationCard({ explanation, streaming, raw }: Props) {
   }
 
   const { phonetic, pos, senseHere, why, collocations, example } = explanation;
+  // 提示词没规定音标带不带斜杠，模型两种都给。统一剥掉再由我们包，
+  // 否则自带斜杠的会显示成 //rɪˈzɪliənt//。
+  const barePhonetic = phonetic?.trim().replace(/^\/+|\/+$/g, "");
 
   return (
     <div className={`card${streaming ? " card--streaming" : ""}`}>
-      {(phonetic || pos) && (
+      {(barePhonetic || pos) && (
         <p className="card__meta">
-          {phonetic && <span className="card__phonetic">/{phonetic}/</span>}
+          {barePhonetic && <span className="card__phonetic">/{barePhonetic}/</span>}
           {pos && <span className="card__pos">{pos}</span>}
         </p>
       )}

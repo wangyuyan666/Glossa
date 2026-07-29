@@ -3,7 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   ChatMessage,
   InstallOutcome,
+  LookupDetail,
   LookupPayload,
+  LookupSummary,
   Provider,
   Settings,
 } from "./types";
@@ -26,12 +28,27 @@ export const takePendingLookup = () =>
 
 export const explain = (
   streamId: string,
+  lookupId: string,
   text: string,
   context: string | null,
-) => invoke<void>("explain", { streamId, text, context });
+  source: "popup" | "main",
+) => invoke<void>("explain", { streamId, lookupId, text, context, source });
 
 export const chatTurn = (streamId: string, messages: ChatMessage[]) =>
   invoke<void>("chat_turn", { streamId, messages });
+
+export const historyList = (limit: number, offset: number, query: string | null) =>
+  invoke<LookupSummary[]>("history_list", { limit, offset, query });
+
+export const historyGet = (id: string) =>
+  invoke<LookupDetail | null>("history_get", { id });
+
+export const historyAppendTurn = (lookupId: string, role: string, content: string) =>
+  invoke<void>("history_append_turn", { lookupId, role, content });
+
+export const historyDelete = (id: string) => invoke<void>("history_delete", { id });
+
+export const historyClear = () => invoke<void>("history_clear");
 
 export const installPopclipExtension = () =>
   invoke<InstallOutcome>("install_popclip_extension");
@@ -43,3 +60,5 @@ export const popclipSnippet = () => invoke<string>("popclip_snippet");
 export const hidePopup = () => invoke<void>("hide_popup");
 
 export const openSettings = () => invoke<void>("open_settings");
+
+export const openMain = () => invoke<void>("open_main");
