@@ -1,0 +1,157 @@
+.settings {
+  height: 100%;
+  overflow-y: auto;
+  padding: 20px 24px 32px;
+  max-width: 760px;
+}
+
+.settings h1 {
+  font-size: 20px;
+  margin: 0 0 20px;
+}
+
+.settings h2 {
+  font-size: 15px;
+  margin: 0 0 8px;
+}
+
+.settings section {
+  margin-bottom: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.settings section > p {
+  margin: 0;
+}
+
+.provider {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.provider__head {
+  display: flex;
+  gap: 8px;
+}
+
+.provider__name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.provider label,
+.settings label.inline {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+  gap: 10px;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+.provider__buttons {
+  display: flex;
+  gap: 8px;
+}
+
+/* 输入框 + 右侧内嵌按钮（小眼睛） */
+.key-field {
+  position: relative;
+  display: flex;
+}
+
+.key-field input {
+  flex: 1;
+  padding-right: 34px;
+}
+
+.key-field__eye {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  bottom: 2px;
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+}
+
+.status {
+  margin: 0;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.status--ok {
+  color: var(--ok);
+}
+.status--fail {
+  color: var(--danger);
+}
+.status--busy {
+  color: var(--fg-muted);
+}
+
+.role {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 160px 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.role__label {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.role__label small {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.steps li {
+  margin-bottom: 4px;
+}
+
+.snippet {
+  width: 100%;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.warn {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--danger);
+  background: var(--bg-sunken);
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+}
+
+.settings__footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
