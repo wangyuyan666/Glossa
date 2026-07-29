@@ -4,6 +4,7 @@ import * as api from "../lib/api";
 import type { RoleBinding, Settings as SettingsData } from "../lib/types";
 import { PROTOCOL_DEFAULT_BASE_URL } from "../lib/types";
 import { CaptureSection } from "./CaptureSection";
+import { PromptSection } from "./PromptSection";
 import { ProviderEditor } from "./ProviderEditor";
 import "./settings.css";
 
@@ -13,6 +14,10 @@ const EMPTY: SettingsData = {
   chat: null,
   port: 8765,
   nativeLanguage: "中文",
+  templates: [],
+  activeWord: null,
+  activeSentence: null,
+  activeChat: null,
 };
 
 export function Settings() {
@@ -185,6 +190,8 @@ export function Settings() {
       </section>
 
       <CaptureSection port={settings.port} savedPort={savedPort} />
+
+      <PromptSection settings={settings} onPatch={patch} />
 
       <section>
         <h2>存储</h2>

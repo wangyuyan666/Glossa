@@ -58,12 +58,13 @@ src-tauri/src/capture/
 src-tauri/src/
   lib.rs          Tauri Builder、全部 #[tauri::command]、流式事件的编排
   history.rs      查询历史（SQLite）
+  templates.rs    提示词模板：内置正文、变量渲染、静态检查
+  prompts.rs      判定单词/句子、拼首轮用户消息
   popclip.rs      PopClip 扩展的生成与安装（package 一键 / snippet 手动）
   config.rs       Settings 结构与磁盘读写（明文 JSON + 0600）
   server.rs       本地取词监听（axum，只绑 127.0.0.1）
   windows.rs      窗口显示、label 常量、LookupPayload
   state.rs        跨命令共享状态（暂存查询、当前流的句柄）
-  prompts.rs      系统提示词
   llm/
     mod.rs        LlmProvider trait、协议分派、端点拼接
     openai.rs     OpenAI 兼容协议
@@ -82,8 +83,32 @@ src/
     LookupView    释义卡片 + 对话的滚动区
     AskBox        追问输入框
   main/           主窗口：左历史栏 + 右查词区
-  settings/       设置窗口 UI（CaptureSection 是取词那一节）
+  settings/       设置窗口 UI
+    CaptureSection  取词那一节
+    PromptSection   提示词模板的选用与管理
+    TemplateEditor  单个模板的编辑 + 静态检查 + 实测
 ```
+
+## 提示词模板
+
+`templates.rs`。三类（`word` / `sentence` / `chat`）各自独立选用——用户想只改释义风格、保留默认对话，不该被迫连对话一起写。
+
+**内置模板留在代码里，不写进 `settings.json`**，配置只记「当前选了哪个 id」。内置提示词以后还会改；把副本存进用户配置的话，升级后用户还在跑旧提示词，而且完全看不出来。`config::sanitize()` 在落盘前剔除内置副本、并把 `builtin` 标记强制置 false。
+
+选中的模板被删掉、或指向了错误的 kind（比如把对话模板选进释义位置），都回落到内置——提示词是主流程的一环，任何情况下不能没有。
+
+变量只有两个：`{{nativeLanguage}}`、`{{context}}`。**选中的内容不是变量**，它在 user message 里发，模板只负责「怎么解释」。未知变量渲染时原样保留而不是替换成空串——静默吞掉的话，用户拼错了只会觉得「模板好像没生效」。
+
+**检测分两层，缺一不可**：
+
+| | 能抓什么 | 抓不到什么 |
+| --- | --- | --- |
+| 静态检查（`templates::check`） | 拼错变量、漏写必需字段名、正文过长 | 模型是否真的照做 |
+| 实测（`lib.rs` 的 `probe_template`） | **模型不听话**——自定义提示词最常见的失败方式 | — |
+
+实测用固定样例（`prompts::probe_input`）真发一次请求，核对返回 JSON 里必需字段是否齐全，并把原始输出展示给用户。这不是锦上添花，是用户唯一的自查手段。
+
+自定义提示词的固有代价：卡片渲染稳定是因为内置提示词经过调试，用户写的模板漏字段、或被模型忽略，卡片就会缺块。这不是能修的 bug。
 
 ## 单词模式与句子模式
 

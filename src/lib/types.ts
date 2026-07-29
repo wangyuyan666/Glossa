@@ -14,6 +14,38 @@ export interface RoleBinding {
   model: string;
 }
 
+export type TemplateKind = "word" | "sentence" | "chat";
+
+export const TEMPLATE_KIND_LABELS: Record<TemplateKind, string> = {
+  word: "释义（单词）",
+  sentence: "释义（句子）",
+  chat: "追问对话",
+};
+
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  kind: TemplateKind;
+  body: string;
+  /** 内置模板不可改不可删 */
+  builtin: boolean;
+}
+
+export interface TemplateIssue {
+  /** error 会让模板不可用，warn 只是提醒 */
+  level: "error" | "warn";
+  message: string;
+}
+
+export interface TemplateProbe {
+  /** 模型的原始输出 */
+  raw: string;
+  /** 释义类是否解析出合法 JSON；对话类只要非空即为 true */
+  parsed: boolean;
+  /** 契约里有、模型没输出的字段 */
+  missingFields: string[];
+}
+
 export interface Settings {
   providers: Provider[];
   /** 释义角色，求快求便宜 */
@@ -22,6 +54,13 @@ export interface Settings {
   chat: RoleBinding | null;
   port: number;
   nativeLanguage: string;
+
+  /** 用户自建的模板。内置模板不在这里，走 api.builtinTemplates() 取 */
+  templates: PromptTemplate[];
+  /** 各类当前启用的模板 id，null 或指向已删除的模板都回落到内置 */
+  activeWord: string | null;
+  activeSentence: string | null;
+  activeChat: string | null;
 }
 
 /** 侧栏列表项，不含对话内容 */

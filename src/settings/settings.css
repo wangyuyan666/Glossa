@@ -141,6 +141,136 @@
   word-break: break-all;
 }
 
+/* ---- 提示词模板 ---- */
+
+.prompts__subhead {
+  margin: 6px 0 0;
+  font-size: 14px;
+}
+
+.templates {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.template {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.template:last-child {
+  border-bottom: none;
+}
+
+.template__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.template__kind {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.template button {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.editor {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+
+.editor__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor__name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.editor__kind {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.editor__body {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  resize: vertical;
+}
+
+.editor__vars dl {
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.editor__vars dt {
+  font-size: 12px;
+}
+
+.editor__vars dd {
+  margin: 1px 0 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.editor__vars summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+
+.editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.probe__raw {
+  margin: 6px 0 0;
+  padding: 10px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-sunken);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .warn {
   margin: 0;
   padding: 10px 12px;

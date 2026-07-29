@@ -5,6 +5,7 @@ mod popclip;
 mod prompts;
 mod server;
 mod state;
+mod templates;
 mod windows;
 
 use serde::Serialize;
@@ -13,6 +14,7 @@ use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 use config::{Provider, Role, Settings};
 use llm::{ChatMessage, ChatRequest, Delta};
 use state::AppState;
+use templates::{PromptTemplate, TemplateIssue, TemplateKind};
 use windows::{LookupPayload, MAIN_LABEL, SETTINGS_LABEL};
 
 /// 前端监听的流式事件名。
@@ -130,12 +132,13 @@ fn explain(
         .resolve(Role::Fast)
         .ok_or("尚未配置「释义」模型，请先到设置里配置")?;
 
+    let template = settings.template(prompts::kind_for(&text));
     let req = ChatRequest {
         model: model.to_string(),
-        system: Some(prompts::explain_system(
+        system: Some(templates::render(
+            &template.body,
             &settings.native_language,
             context.as_deref(),
-            prompts::is_sentence(&text),
         )),
         messages: vec![ChatMessage {
             role: "user".into(),
@@ -165,9 +168,14 @@ fn chat_turn(app: AppHandle, stream_id: String, messages: Vec<ChatMessage>) -> R
         .resolve(Role::Chat)
         .ok_or("尚未配置「对话」模型，请先到设置里配置")?;
 
+    let template = settings.template(TemplateKind::Chat);
     let req = ChatRequest {
         model: model.to_string(),
-        system: Some(prompts::chat_system(&settings.native_language)),
+        system: Some(templates::render(
+            &template.body,
+            &settings.native_language,
+            None,
+        )),
         messages,
         max_tokens: CHAT_MAX_TOKENS,
         temperature: 0.6,
@@ -251,6 +259,130 @@ fn spawn_stream(
 fn emit(app: &AppHandle, event: StreamEvent) {
     if let Err(e) = app.emit(STREAM_EVENT, event) {
         eprintln!("[emit] 发送流事件失败: {e}");
+    }
+}
+
+// ---------------------------------------------------------------- 模板命令
+
+/// 内置模板。不落配置文件，每次从代码里取——升级后用户立刻拿到新版内置提示词。
+#[tauri::command]
+fn builtin_templates() -> Vec<PromptTemplate> {
+    templates::builtins()
+}
+
+/// 模板正文里可用的变量，设置页拿去做说明表。
+#[tauri::command]
+fn template_variables() -> Vec<String> {
+    templates::VARIABLES.iter().map(|v| v.to_string()).collect()
+}
+
+/// 静态检查。本地、免费、瞬时，输入时就能跑。
+#[tauri::command]
+fn check_template(kind: TemplateKind, body: String) -> Vec<TemplateIssue> {
+    templates::check(kind, &body)
+}
+
+/// 「实测一次」的结果。
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct TemplateProbe {
+    /// 模型的原始输出，让用户肉眼判断质量。
+    raw: String,
+    /// 释义类是否解析出了合法 JSON。对话类恒为 true（本来就没有格式要求）。
+    parsed: bool,
+    /// 契约里有、但模型没输出的字段。
+    missing_fields: Vec<String>,
+}
+
+/// 实测：拿固定样例真发一次请求。
+///
+/// 静态检查只能防拼写错误，**「模型不听你的」只有实测能发现**——那是自定义提示词
+/// 最常见的失败方式。所以这不是锦上添花，是用户唯一的自查手段。
+#[tauri::command]
+async fn probe_template(
+    app: AppHandle,
+    kind: TemplateKind,
+    body: String,
+) -> Result<TemplateProbe, String> {
+    let settings = config::load(&app);
+    // 释义类用 fast 角色，对话类用 chat 角色，和真实调用保持一致。
+    let role = match kind {
+        TemplateKind::Chat => Role::Chat,
+        _ => Role::Fast,
+    };
+    let (provider, model) = settings
+        .resolve(role)
+        .ok_or("尚未配置模型，请先在上方配置并绑定角色")?;
+
+    let user = match kind {
+        TemplateKind::Chat => prompts::probe_input(kind).to_string(),
+        _ => prompts::explain_user(prompts::probe_input(kind), None),
+    };
+
+    let req = ChatRequest {
+        model: model.to_string(),
+        system: Some(templates::render(&body, &settings.native_language, None)),
+        messages: vec![ChatMessage {
+            role: "user".into(),
+            content: user,
+        }],
+        max_tokens: EXPLAIN_MAX_TOKENS,
+        temperature: 0.2,
+    };
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Delta>(64);
+    let stream = llm::stream(provider, req, tx);
+    let collect = async {
+        let mut out = String::new();
+        while let Some(Delta::Text(t)) = rx.recv().await {
+            out.push_str(&t);
+        }
+        out
+    };
+    let (result, raw) = tokio::join!(stream, collect);
+    result.map_err(|e| e.to_string())?;
+
+    Ok(evaluate_probe(kind, raw))
+}
+
+/// 把模型输出对着字段契约核一遍。抽出来是为了能脱离网络做单测。
+fn evaluate_probe(kind: TemplateKind, raw: String) -> TemplateProbe {
+    let required = templates::required_fields(kind);
+    if required.is_empty() {
+        // 对话类没有契约，拿到内容就算通过。
+        return TemplateProbe {
+            parsed: !raw.trim().is_empty(),
+            raw,
+            missing_fields: Vec::new(),
+        };
+    }
+
+    // 模型常给 JSON 裹代码块，和释义主流程一样先剥掉再解析。
+    let trimmed = raw
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    match serde_json::from_str::<serde_json::Value>(trimmed) {
+        Ok(value) => {
+            let missing = required
+                .iter()
+                .filter(|field| value.get(**field).is_none())
+                .map(|field| field.to_string())
+                .collect();
+            TemplateProbe {
+                raw,
+                parsed: true,
+                missing_fields: missing,
+            }
+        }
+        Err(_) => TemplateProbe {
+            raw,
+            parsed: false,
+            missing_fields: required.iter().map(|f| f.to_string()).collect(),
+        },
     }
 }
 
@@ -362,6 +494,10 @@ pub fn run() {
             take_pending_lookup,
             explain,
             chat_turn,
+            builtin_templates,
+            template_variables,
+            check_template,
+            probe_template,
             history_list,
             history_get,
             history_append_turn,
@@ -382,4 +518,59 @@ pub fn run() {
                 let _ = windows::show_main(app);
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn probe_reports_missing_fields() {
+        let probe = evaluate_probe(
+            TemplateKind::Sentence,
+            r#"{"translation":"译文"}"#.to_string(),
+        );
+        assert!(probe.parsed);
+        assert_eq!(probe.missing_fields, vec!["structure", "keyPoints"]);
+    }
+
+    #[test]
+    fn probe_accepts_a_complete_response() {
+        let probe = evaluate_probe(
+            TemplateKind::Sentence,
+            r#"{"translation":"a","structure":"b","keyPoints":[]}"#.to_string(),
+        );
+        assert!(probe.parsed);
+        assert!(probe.missing_fields.is_empty());
+    }
+
+    #[test]
+    fn probe_strips_code_fences_like_the_real_path_does() {
+        let probe = evaluate_probe(
+            TemplateKind::Sentence,
+            "```json\n{\"translation\":\"a\",\"structure\":\"b\",\"keyPoints\":[]}\n```"
+                .to_string(),
+        );
+        assert!(probe.parsed, "裹了代码块也该判成功: {:?}", probe.raw);
+    }
+
+    #[test]
+    fn probe_flags_output_that_is_not_json_at_all() {
+        // 用户把释义模板写成了自由文本要求——这正是实测要抓的那类失败。
+        let probe = evaluate_probe(TemplateKind::Word, "take on 的意思是承担。".to_string());
+        assert!(!probe.parsed);
+        assert_eq!(probe.missing_fields.len(), 7);
+    }
+
+    #[test]
+    fn chat_probe_has_no_contract() {
+        let probe = evaluate_probe(TemplateKind::Chat, "随便一段回答".to_string());
+        assert!(probe.parsed);
+        assert!(probe.missing_fields.is_empty());
+    }
+
+    #[test]
+    fn chat_probe_fails_on_empty_output() {
+        assert!(!evaluate_probe(TemplateKind::Chat, "   ".to_string()).parsed);
+    }
 }

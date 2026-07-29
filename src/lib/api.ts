@@ -3,6 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   ChatMessage,
   InstallOutcome,
+  PromptTemplate,
+  TemplateIssue,
+  TemplateKind,
+  TemplateProbe,
   LookupDetail,
   LookupPayload,
   LookupSummary,
@@ -35,6 +39,17 @@ export const explain = (
 
 export const chatTurn = (streamId: string, messages: ChatMessage[]) =>
   invoke<void>("chat_turn", { streamId, messages });
+
+export const builtinTemplates = () =>
+  invoke<PromptTemplate[]>("builtin_templates");
+
+export const templateVariables = () => invoke<string[]>("template_variables");
+
+export const checkTemplate = (kind: TemplateKind, body: string) =>
+  invoke<TemplateIssue[]>("check_template", { kind, body });
+
+export const probeTemplate = (kind: TemplateKind, body: string) =>
+  invoke<TemplateProbe>("probe_template", { kind, body });
 
 export const historyList = (limit: number, offset: number, query: string | null) =>
   invoke<LookupSummary[]>("history_list", { limit, offset, query });
