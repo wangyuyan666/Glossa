@@ -257,6 +257,18 @@ curl -X POST http://127.0.0.1:8765/lookup \
   --data-urlencode "context=She had to take on more responsibility."
 ```
 
+### 什么时候 dev 不够用
+
+阶段一整套功能都能在 `tauri dev` 下验完——取词走 PopClip + 本地 HTTP，完全不碰系统权限。
+
+阶段二 `capture/` 落地后不成立了：`tauri dev` 跑的是 `target/debug/enassistant` 裸二进制，TCC 对未签名/ad-hoc 二进制按**路径 + cdhash** 记账，每次改 Rust 重编 hash 就变、辅助功能授权随之失效（详见上面 AX 那节的坑列表）。分三层处理：
+
+1. **纯逻辑走 `cargo test`** — UTF-16 range 切片、`context.rs` 的前后文截取都是纯函数，不需要真机权限，别为了跑它们去 build。
+2. **AX 真机行为在 `npm run tauri build` 产物上验** — 产物 `.app` 放固定路径（`/Applications` 或一个不会挪的目录）再授权，之后反复启动都算同一个 app。不要在 `target/debug/` 里授权。
+3. **反复要权限烦到不行时才上签名** — 正常签名的 app 按 designated requirement（签名 identity + bundle id）记账，重编重签后授权保留。搞一个自签名 code signing 证书，给 dev 产物签固定 identity + 固定 bundle id。
+
+配套细节：重新授权前先去系统设置 → 隐私与安全性 → 辅助功能把旧条目**删掉再重加**。陈旧条目会出现「勾是勾着的但权限没生效」，这个状态极易误判成取词代码写错了。
+
 ## 尚未实现
 
 生词本、复习（FSRS）、本地词典即时层、结果缓存。都在阶段二之后，见 README 的路线图。
