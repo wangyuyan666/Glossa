@@ -51,6 +51,7 @@ export function Settings() {
           protocol: "openai",
           baseUrl: PROTOCOL_DEFAULT_BASE_URL.openai,
           apiKey: "",
+          maxTokens: null,
         },
       ],
     });

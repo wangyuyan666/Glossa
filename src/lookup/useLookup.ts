@@ -43,6 +43,14 @@ export function useLookup() {
   const [raw, setRaw] = useState("");
   const [explanation, setExplanation] = useState<Partial<Explanation> | null>(null);
 
+  /**
+   * 推理模型的思考增量。
+   *
+   * 推理模型在吐正文之前可能思考十几秒，这段时间里骨架屏一动不动，看起来像卡死。
+   * 攒在这里给「思考中…」用，正文一到就不再展示——它不是答案。
+   */
+  const [reasoning, setReasoning] = useState("");
+
   /** 释义构成的会话种子（user + assistant 各一条），追问时拼在最前面。 */
   const [seed, setSeed] = useState<ChatMessage[]>([]);
   const [turns, setTurns] = useState<ChatMessage[]>([]);
@@ -57,6 +65,7 @@ export function useLookup() {
     setError(null);
     setRaw("");
     setExplanation(null);
+    setReasoning("");
     setSeed([]);
     setTurns([]);
     setAnswering(null);
@@ -82,7 +91,9 @@ export function useLookup() {
             const parsed = parsePartialJson<Explanation>(acc);
             if (parsed) setExplanation(parsed);
           },
+          onReasoning: (delta) => setReasoning((prev) => prev + delta),
           onDone: () => {
+            setReasoning("");
             const parsed = parsePartialJson<Explanation>(acc);
             if (parsed) setExplanation(parsed);
             setSeed([
@@ -92,6 +103,7 @@ export function useLookup() {
             setPhase("ready");
           },
           onError: (message) => {
+            setReasoning("");
             setError(message);
             setPhase("error");
           },
@@ -137,6 +149,7 @@ export function useLookup() {
       ];
       setTurns((prev) => [...prev, { role: "user", content: trimmed }]);
       setAnswering("");
+      setReasoning("");
 
       // 提问先落库：它和这条流的成败无关，流失败了问题本身也该留在历史里。
       if (lookupId) {
@@ -150,7 +163,9 @@ export function useLookup() {
           acc += delta;
           setAnswering(acc);
         },
+        onReasoning: (delta) => setReasoning((prev) => prev + delta),
         onDone: () => {
+          setReasoning("");
           setTurns((prev) => [...prev, { role: "assistant", content: acc }]);
           setAnswering(null);
           if (lookupId) {
@@ -158,6 +173,7 @@ export function useLookup() {
           }
         },
         onError: (message) => {
+          setReasoning("");
           setTurns((prev) => [
             ...prev,
             { role: "assistant", content: `⚠️ ${message}` },
@@ -175,6 +191,7 @@ export function useLookup() {
     error,
     raw,
     explanation,
+    reasoning,
     turns,
     answering,
     start,

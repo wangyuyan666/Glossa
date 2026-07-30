@@ -229,6 +229,18 @@ turns(id, lookup_id → lookups.id ON DELETE CASCADE, seq, role, content)
 - 发起新流会 `abort` 上一条（`state::replace_stream`），避免两股增量交错渲染。
 - `llm::stream` 返回时 `tx` 被丢弃，forwarder 随之自然结束——不要给它加显式的终止信号。
 
+### 推理模型
+
+`Delta` 分 `Text` 与 `Reasoning` 两个变体，别合成一个：思考内容混进正文，`parsePartialJson` 拿到的就是一大段自然语言。
+
+- **思考 token 也算 completion token**。上限原来是 800，`deepseek-v4-flash` 光思考就写满 800、`finish_reason: "length"`、正文零字符——落库落进一条空释义，界面一片空白且**不报错**。现在默认 4000（实测最坏 692，余量 ~6 倍）。
+- 上限是 **provider 级设置**（`Provider::max_tokens`，界面上「输出上限」），常量只是默认值。它是端点能力不是全局偏好：支持 64K 输出的 reasoner 和上限 4096 的中转要的值正相反。**默认值别往 4096 以上调**——那是相当一部分端点的输出硬上限，超了直接 HTTP 400，症状是「换个 provider 就全查不出来」。要更大让用户自己在该 provider 上填。
+- 低于 `MIN_MAX_TOKENS`（256）的值当没填：输入框清空会送来 0，照用的话思考还没写完就截断，正文永远是空的。
+- openai 协议思考在 `delta.reasoning_content`（此时 `delta.content` 是 `null`）；anthropic 协议在 `content_block_delta` 的 `delta.thinking`。
+- **只认 `content` 会漏掉整个思考流**，长思考期间界面完全没动静，看起来像卡死。前端 `ThinkingNote` 就是给这段时间用的，正文一到就撤掉。
+- 两道兜底都要留着：`openai.rs` 在「没有正文 + `finish_reason == "length"`」时报错；`spawn_stream` 在 `full` 为空时发 `Error` 而不是 `Done`，且**不落库**。静默的空卡片是最难排查的失败方式。
+- 收流的地方（`collect_text`、forwarder）**必须收到 channel 关闭为止**，且要匹配全部变体。写成 `while let Some(Delta::Text(t))` 的话，第一个思考增量就会让循环提前退出。
+
 ## 开发
 
 ```bash

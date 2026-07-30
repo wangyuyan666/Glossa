@@ -6,6 +6,8 @@ interface Handlers {
   onDelta: (text: string) => void;
   onDone: () => void;
   onError: (message: string) => void;
+  /** 推理模型的思考增量。不关心思考过程的调用方可以不传。 */
+  onReasoning?: (text: string) => void;
 }
 
 /**
@@ -25,6 +27,9 @@ function ensureListener() {
     switch (payload.kind) {
       case "delta":
         handler.onDelta(payload.text);
+        break;
+      case "reasoning":
+        handler.onReasoning?.(payload.text);
         break;
       case "done":
         handlers.delete(payload.streamId);
@@ -46,12 +51,12 @@ function ensureListener() {
  */
 export function startStream(
   start: (streamId: string) => Promise<void>,
-  { onDelta, onDone, onError }: Handlers,
+  { onDelta, onDone, onError, onReasoning }: Handlers,
 ): () => void {
   ensureListener();
 
   const streamId = crypto.randomUUID();
-  handlers.set(streamId, { onDelta, onDone, onError });
+  handlers.set(streamId, { onDelta, onDone, onError, onReasoning });
 
   start(streamId).catch((err) => {
     handlers.delete(streamId);

@@ -7,7 +7,16 @@ export interface Provider {
   /** 例如 https://api.openai.com/v1 或 https://api.anthropic.com，结尾带不带 /v1 都可以 */
   baseUrl: string;
   apiKey: string;
+  /**
+   * 该端点单次输出的 token 上限，null 表示用默认值（4000）。
+   *
+   * 含推理模型的思考 token。给小了会「思考写满、正文零字符」，给大了端点可能直接 400。
+   */
+  maxTokens: number | null;
 }
+
+/** provider 没配 maxTokens 时后端用的默认值，只用于界面上的提示文案。 */
+export const DEFAULT_MAX_TOKENS = 4000;
 
 export interface RoleBinding {
   providerId: string;
@@ -125,6 +134,8 @@ export interface ChatMessage {
 
 export type StreamEvent =
   | { kind: "delta"; streamId: string; text: string }
+  /** 推理模型的思考增量。只用于「思考中」的展示，不参与 JSON 解析 */
+  | { kind: "reasoning"; streamId: string; text: string }
   | { kind: "done"; streamId: string }
   | { kind: "error"; streamId: string; message: string };
 

@@ -35,9 +35,16 @@ pub struct ChatRequest {
 }
 
 /// 归一后的流式增量。
+///
+/// 推理模型（DeepSeek 的 reasoning 系列、Anthropic 的 extended thinking）把思考过程
+/// 放在与正文不同的字段里。两者必须分开：思考内容**不能**进释义正文，否则
+/// `parsePartialJson` 拿到的是一大段自然语言；但也不能丢掉，不然长思考期间界面
+/// 完全没动静，看起来就像卡死了。
 #[derive(Debug, Clone)]
 pub enum Delta {
     Text(String),
+    /// 思考增量。只用于「思考中」的展示，不落库、不参与 JSON 解析。
+    Reasoning(String),
 }
 
 pub trait LlmProvider {

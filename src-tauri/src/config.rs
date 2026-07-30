@@ -33,6 +33,28 @@ pub struct Provider {
     /// 结尾带不带 `/v1` 都能接受，见 `llm::endpoint`。
     pub base_url: String,
     pub api_key: String,
+    /// 该端点单次输出的 token 上限，None 表示用内置默认值。
+    ///
+    /// 这是**端点能力**而不是全局偏好，所以挂在 provider 上：支持 64K 输出的 reasoner
+    /// 和上限 4096 的中转，需要的值正相反。填太大的后果是端点直接返回 HTTP 400。
+    ///
+    /// 注意它**含推理模型的思考 token**，给小了会出现「思考写满、正文零字符」。
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
+}
+
+/// 低于这个值的上限一律当没填。
+///
+/// 输入框清空、手滑填个 0，不该把额度掐到发不出一次完整释义。
+const MIN_MAX_TOKENS: u32 = 256;
+
+impl Provider {
+    /// 该 provider 的输出上限，没配就用传入的默认值。
+    pub fn max_tokens_or(&self, default: u32) -> u32 {
+        self.max_tokens
+            .filter(|v| *v >= MIN_MAX_TOKENS)
+            .unwrap_or(default)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -176,11 +198,16 @@ pub fn save(app: &AppHandle, settings: &Settings) -> Result<()> {
     Ok(())
 }
 
-/// 落盘前清理用户模板：
+/// 落盘前清理：
 ///
 /// - 内置模板永远不写进配置。写了的话，以后改内置提示词，用户还在跑旧副本且毫不知情。
 /// - `builtin` 标记强制置 false，防止伪造出一个「不可删」的用户模板。
+/// - 过小的 `maxTokens` 归一成 None（回落默认值），不把它原样存下来。
 fn sanitize(mut settings: Settings) -> Settings {
+    for provider in &mut settings.providers {
+        provider.max_tokens = provider.max_tokens.filter(|v| *v >= MIN_MAX_TOKENS);
+    }
+
     let builtin_ids: Vec<&str> = TemplateKind::ALL
         .iter()
         .map(|k| templates::builtin_id(*k))
@@ -267,6 +294,51 @@ mod tests {
             settings.template(TemplateKind::Word).id,
             templates::builtin_id(TemplateKind::Word)
         );
+    }
+
+    fn provider(max_tokens: Option<u32>) -> Provider {
+        Provider {
+            id: "p".into(),
+            name: "测试".into(),
+            protocol: Protocol::Openai,
+            base_url: "https://example.com".into(),
+            api_key: "k".into(),
+            max_tokens,
+        }
+    }
+
+    #[test]
+    fn old_configs_without_max_tokens_still_load() {
+        // 加字段不能让已有用户的 settings.json 解析失败——那会静默回落到空配置，
+        // 表现是「升级后 provider 和 key 全没了」。
+        let raw = r#"{"providers":[{"id":"p","name":"DeepSeek","protocol":"openai",
+            "baseUrl":"https://api.deepseek.com","apiKey":"k"}]}"#;
+        let settings: Settings = serde_json::from_str(raw).unwrap();
+        assert_eq!(settings.providers[0].max_tokens, None);
+        assert_eq!(settings.providers[0].max_tokens_or(4000), 4000);
+    }
+
+    #[test]
+    fn max_tokens_falls_back_to_the_default_when_unset() {
+        assert_eq!(provider(None).max_tokens_or(4000), 4000);
+        assert_eq!(provider(Some(16000)).max_tokens_or(4000), 16000);
+    }
+
+    #[test]
+    fn absurdly_small_limits_fall_back_instead_of_starving_the_stream() {
+        // 输入框清空会送来 0；照用的话思考还没写完就截断，正文永远是空的。
+        assert_eq!(provider(Some(0)).max_tokens_or(4000), 4000);
+        assert_eq!(provider(Some(64)).max_tokens_or(4000), 4000);
+    }
+
+    #[test]
+    fn sanitize_normalizes_small_limits_to_unset() {
+        let cleaned = sanitize(Settings {
+            providers: vec![provider(Some(0)), provider(Some(8000))],
+            ..Settings::default()
+        });
+        assert_eq!(cleaned.providers[0].max_tokens, None);
+        assert_eq!(cleaned.providers[1].max_tokens, Some(8000));
     }
 
     #[test]

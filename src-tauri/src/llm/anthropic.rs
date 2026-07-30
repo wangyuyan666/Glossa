@@ -54,7 +54,20 @@ impl LlmProvider for Anthropic {
                     let Ok(value) = serde_json::from_str::<Value>(&event.data) else {
                         continue;
                     };
-                    let text = value["delta"]["text"].as_str().unwrap_or_default();
+                    let delta = &value["delta"];
+                    // extended thinking 开着时思考走 `thinking_delta`，正文走 `text_delta`。
+                    // 两者归一到不同的 Delta 变体：思考不能混进释义 JSON。
+                    let thinking = delta["thinking"].as_str().unwrap_or_default();
+                    if !thinking.is_empty()
+                        && tx
+                            .send(Delta::Reasoning(thinking.to_string()))
+                            .await
+                            .is_err()
+                    {
+                        break;
+                    }
+
+                    let text = delta["text"].as_str().unwrap_or_default();
                     if !text.is_empty() && tx.send(Delta::Text(text.to_string())).await.is_err() {
                         break;
                     }

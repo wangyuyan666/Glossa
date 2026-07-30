@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 
 import * as api from "../lib/api";
 import { ExplanationCard } from "./ExplanationCard";
+import { ThinkingNote } from "./ThinkingNote";
 import type { useLookup } from "./useLookup";
 
 interface Props {
@@ -19,12 +20,15 @@ interface Props {
  * 主窗口在顶部，位置不一样。
  */
 export function LookupView({ lookup, idleHint }: Props) {
-  const { word, phase, error, raw, explanation, turns, answering } = lookup;
+  const { word, phase, error, raw, explanation, reasoning, turns, answering } = lookup;
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight });
   }, [explanation, turns, answering]);
+
+  /** 释义流还在思考、正文一个字都没到的时候才显示——正文一来它就不该占地方了。 */
+  const thinkingBeforeExplanation = phase === "explaining" && !explanation;
 
   return (
     <div className="lookup" ref={bodyRef}>
@@ -43,12 +47,17 @@ export function LookupView({ lookup, idleHint }: Props) {
         </div>
       )}
 
-      {(phase === "explaining" || phase === "ready") && (
-        <ExplanationCard
-          explanation={explanation}
-          streaming={phase === "explaining"}
-          raw={raw}
-        />
+      {/* 思考期间用它顶替骨架屏：同样是「在跑」的信号，但看得出跑到哪了。 */}
+      {thinkingBeforeExplanation && reasoning ? (
+        <ThinkingNote text={reasoning} />
+      ) : (
+        (phase === "explaining" || phase === "ready") && (
+          <ExplanationCard
+            explanation={explanation}
+            streaming={phase === "explaining"}
+            raw={raw}
+          />
+        )
       )}
 
       {turns.map((turn, i) => (
@@ -65,6 +74,8 @@ export function LookupView({ lookup, idleHint }: Props) {
         <div className="turn turn--assistant">
           {answering ? (
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{answering}</ReactMarkdown>
+          ) : reasoning ? (
+            <ThinkingNote text={reasoning} />
           ) : (
             <span className="dots">···</span>
           )}

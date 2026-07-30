@@ -2,7 +2,11 @@ import { useState } from "react";
 
 import * as api from "../lib/api";
 import type { Protocol, Provider } from "../lib/types";
-import { PROTOCOL_DEFAULT_BASE_URL, PROTOCOL_LABELS } from "../lib/types";
+import {
+  DEFAULT_MAX_TOKENS,
+  PROTOCOL_DEFAULT_BASE_URL,
+  PROTOCOL_LABELS,
+} from "../lib/types";
 
 interface Props {
   provider: Provider;
@@ -132,6 +136,27 @@ export function ProviderEditor({
             {revealKey ? "🙈" : "👁"}
           </button>
         </span>
+      </label>
+
+      <label>
+        输出上限
+        <input
+          type="number"
+          min={256}
+          step={1000}
+          value={provider.maxTokens ?? ""}
+          placeholder={`${DEFAULT_MAX_TOKENS}（默认）`}
+          onChange={(e) => {
+            // 清空 → null（回落默认值）。解析不出数字也当没填，别把 NaN 存进配置。
+            const value = Number(e.target.value);
+            patch({ maxTokens: Number.isFinite(value) && value > 0 ? value : null });
+          }}
+        />
+        <small className="provider__note">
+          单次输出的 token 上限，<strong>含推理模型的思考部分</strong>。留空用{" "}
+          {DEFAULT_MAX_TOKENS}。端点撑得住更多时才往上调；填超过端点自身上限（常见是
+          4096）会直接报 400。
+        </small>
       </label>
 
       <label>

@@ -58,6 +58,14 @@
   font-size: 13px;
 }
 
+/* label 里的说明文字。对齐到输入框那一列，不然会缩在 90px 的标签列里 */
+.provider__note {
+  grid-column: 2;
+  margin-top: -4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .provider__buttons {
   display: flex;
   gap: 8px;

@@ -23,8 +23,20 @@ const STREAM_EVENT: &str = "llm-stream";
 /// 没有它的话，从弹窗查的词不会出现在已经打开的主窗口里。
 const HISTORY_EVENT: &str = "history-updated";
 
-const EXPLAIN_MAX_TOKENS: u32 = 800;
-const CHAT_MAX_TOKENS: u32 = 1500;
+// 额度要按**推理模型**来给：思考 token 也算 completion token，额度不够时思考写满就
+// 截断，正文一个字都没有（实际踩过：800 token 全被思考吃光，界面一片空白）。
+// 释义正文本身只要 ~300 token，多出来的都是留给思考的余量。
+//
+// 默认值卡在 4000：4096 是相当一部分端点（老一代模型、各类中转）的输出硬上限，
+// 超了直接 HTTP 400。端点撑得住更多的，在 provider 里单独配 `maxTokens` 抬高。
+const DEFAULT_EXPLAIN_MAX_TOKENS: u32 = 4000;
+const DEFAULT_CHAT_MAX_TOKENS: u32 = 4000;
+
+/// 流正常结束但没有正文时给用户看的提示。
+///
+/// 静默出一张空卡片是最坏的失败方式——用户看不出是模型的问题还是 app 坏了。
+const EMPTY_STREAM_MESSAGE: &str =
+    "模型没有返回任何正文。若用的是推理模型，可能是额度全花在思考上了，换个模型或重试一次";
 
 #[derive(Serialize, Clone)]
 #[serde(
@@ -34,6 +46,8 @@ const CHAT_MAX_TOKENS: u32 = 1500;
 )]
 enum StreamEvent {
     Delta { stream_id: String, text: String },
+    /// 推理模型的思考增量。前端拿它显示「思考中…」，不参与 JSON 解析。
+    Reasoning { stream_id: String, text: String },
     Done { stream_id: String },
     Error { stream_id: String, message: String },
 }
@@ -67,22 +81,16 @@ async fn test_provider(provider: Provider, model: String) -> Result<String, Stri
             role: "user".into(),
             content: "Reply with the single word: OK".into(),
         }],
-        max_tokens: 16,
+        // 回声只要 1 个 token，但推理模型会先思考一大段——给 16 的话思考就把额度写满，
+        // 测试连接永远失败，还会报成「检查模型名是否正确」这种指错方向的提示。
+        max_tokens: provider.max_tokens_or(DEFAULT_EXPLAIN_MAX_TOKENS),
         temperature: 0.0,
     };
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Delta>(16);
     let stream = llm::stream(&provider, req, tx);
 
-    let collect = async {
-        let mut out = String::new();
-        while let Some(Delta::Text(t)) = rx.recv().await {
-            out.push_str(&t);
-        }
-        out
-    };
-
-    let (result, text) = tokio::join!(stream, collect);
+    let (result, text) = tokio::join!(stream, collect_text(&mut rx));
     result.map_err(|e| e.to_string())?;
 
     let text = text.trim().to_string();
@@ -144,7 +152,7 @@ fn explain(
             role: "user".into(),
             content: prompts::explain_user(&text, context.as_deref()),
         }],
-        max_tokens: EXPLAIN_MAX_TOKENS,
+        max_tokens: provider.max_tokens_or(DEFAULT_EXPLAIN_MAX_TOKENS),
         temperature: 0.2,
     };
 
@@ -177,7 +185,7 @@ fn chat_turn(app: AppHandle, stream_id: String, messages: Vec<ChatMessage>) -> R
             None,
         )),
         messages,
-        max_tokens: CHAT_MAX_TOKENS,
+        max_tokens: provider.max_tokens_or(DEFAULT_CHAT_MAX_TOKENS),
         temperature: 0.6,
     };
 
@@ -204,15 +212,22 @@ fn spawn_stream(
                 let stream_id = stream_id.clone();
                 async move {
                     let mut full = String::new();
-                    while let Some(Delta::Text(text)) = rx.recv().await {
-                        full.push_str(&text);
-                        emit(
-                            &app,
-                            StreamEvent::Delta {
+                    while let Some(delta) = rx.recv().await {
+                        let event = match delta {
+                            // 只有正文进 full：落库和前端解析用的都是它。
+                            Delta::Text(text) => {
+                                full.push_str(&text);
+                                StreamEvent::Delta {
+                                    stream_id: stream_id.clone(),
+                                    text,
+                                }
+                            }
+                            Delta::Reasoning(text) => StreamEvent::Reasoning {
                                 stream_id: stream_id.clone(),
                                 text,
                             },
-                        );
+                        };
+                        emit(&app, event);
                     }
                     full
                 }
@@ -223,6 +238,15 @@ fn spawn_stream(
             let full = forwarder.await.unwrap_or_default();
 
             match result {
+                // 流跑完了但正文是空的（推理模型把额度花在思考上、或端点吐了个空回复）。
+                // 当成错误报出来，也不落库——历史里存一条空释义，点开还是空白。
+                Ok(()) if full.trim().is_empty() => emit(
+                    &app,
+                    StreamEvent::Error {
+                        stream_id,
+                        message: EMPTY_STREAM_MESSAGE.to_string(),
+                    },
+                ),
                 Ok(()) => {
                     if let Some(p) = persist {
                         // 落库失败不该影响用户看到释义，记日志即可。
@@ -253,6 +277,20 @@ fn spawn_stream(
     });
 
     state::replace_stream(&app, handle);
+}
+
+/// 收干一条流的正文，思考增量丢弃。
+///
+/// 「测试连接」和「实测模板」都只关心正文。注意必须收到 channel 关闭为止：
+/// 提前 return 会让 `llm::stream` 那侧的 `tx.send` 失败，它会当成接收端没了而中断拉流。
+async fn collect_text(rx: &mut tokio::sync::mpsc::Receiver<Delta>) -> String {
+    let mut out = String::new();
+    while let Some(delta) = rx.recv().await {
+        if let Delta::Text(text) = delta {
+            out.push_str(&text);
+        }
+    }
+    out
 }
 
 /// 广播给所有窗口，前端按 streamId 分发。
@@ -326,20 +364,13 @@ async fn probe_template(
             role: "user".into(),
             content: user,
         }],
-        max_tokens: EXPLAIN_MAX_TOKENS,
+        max_tokens: provider.max_tokens_or(DEFAULT_EXPLAIN_MAX_TOKENS),
         temperature: 0.2,
     };
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Delta>(64);
     let stream = llm::stream(provider, req, tx);
-    let collect = async {
-        let mut out = String::new();
-        while let Some(Delta::Text(t)) = rx.recv().await {
-            out.push_str(&t);
-        }
-        out
-    };
-    let (result, raw) = tokio::join!(stream, collect);
+    let (result, raw) = tokio::join!(stream, collect_text(&mut rx));
     result.map_err(|e| e.to_string())?;
 
     Ok(evaluate_probe(kind, raw))

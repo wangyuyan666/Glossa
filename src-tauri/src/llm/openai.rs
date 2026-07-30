@@ -42,6 +42,9 @@ impl LlmProvider for Openai {
         let resp = ensure_ok(resp).await?;
 
         let mut events = resp.bytes_stream().eventsource();
+        let mut got_text = false;
+        let mut finish_reason: Option<String> = None;
+
         while let Some(event) = events.next().await {
             let event = event?;
             if event.data.trim() == "[DONE]" {
@@ -54,13 +57,43 @@ impl LlmProvider for Openai {
             if let Some(err) = value.get("error") {
                 anyhow::bail!("{err}");
             }
-            let text = value["choices"][0]["delta"]["content"]
+
+            let choice = &value["choices"][0];
+            if let Some(reason) = choice["finish_reason"].as_str() {
+                finish_reason = Some(reason.to_string());
+            }
+
+            // 推理模型的思考走 `reasoning_content`，此时 `content` 是 null。
+            // 只认 content 的话，思考期间一个增量都收不到。
+            let reasoning = choice["delta"]["reasoning_content"]
                 .as_str()
                 .unwrap_or_default();
-            if !text.is_empty() && tx.send(Delta::Text(text.to_string())).await.is_err() {
-                // 接收端已关闭（弹窗关了或发起了新查询），停止拉流。
+            if !reasoning.is_empty()
+                && tx
+                    .send(Delta::Reasoning(reasoning.to_string()))
+                    .await
+                    .is_err()
+            {
+                // 接收端已关闭（窗口关了或发起了新查询），停止拉流。
                 break;
             }
+
+            let text = choice["delta"]["content"].as_str().unwrap_or_default();
+            if !text.is_empty() {
+                got_text = true;
+                if tx.send(Delta::Text(text.to_string())).await.is_err() {
+                    break;
+                }
+            }
+        }
+
+        // 推理模型的思考也算 completion token：额度不够时思考写满就截断，正文一个字都没有。
+        // 这里不报错的话，上层只会看到一次「成功但空白」的查询，最难排查的那种失败。
+        if !got_text && finish_reason.as_deref() == Some("length") {
+            anyhow::bail!(
+                "模型把 {} token 的额度全用在思考上，没输出正文。换个非推理模型，或调高上限",
+                req.max_tokens
+            );
         }
         Ok(())
     }
