@@ -79,6 +79,7 @@ src/
     api.ts        invoke 的薄封装，所有后端调用都走这里
     stream.ts     llm-stream 事件的单例监听与按 streamId 分发
     jsonish.ts    容错的增量 JSON 解析
+    imeClick.ts   补回输入法组词时被吞掉的第一次点击（macOS）
   lookup/         查词逻辑与 UI
     useLookup.ts  一次查询的完整状态机：流式释义 + 多轮追问 + 落库
     LookupView    释义卡片 + 对话的滚动区
@@ -166,6 +167,26 @@ NSWindow 默认 `acceptsFirstMouse: NO`：app 不在前台时，落到窗口上�
 - 代价是激活那一下的点击会真生效（手正好落在「清空历史」上就真清了），对划词工具这笔账划算。
 
 **验证只能用真实的 `CGEventPost` 点击**，AppleScript 的 `click at` 走 AX、绕过整个 first-mouse 行为，测不出来。而 `CGEventPost` 要求**发事件的进程**（终端 / IDE）有辅助功能权限，没授权的话事件被系统静默丢弃、看起来像「修了没用」——先点一下标题栏自检工具是否真在发事件。没权限就退回手点，同时用 `CGWindowListCopyWindowInfo` 拉窗口栈看设置窗口（780x620）是在第几次点击后出现的，这比肉眼判断可靠。
+
+### 输入法吞掉的那一下（和上面是两回事）
+
+「第一下没反应」有**两个**独立成因，只修一个仍然会被报 bug。上面那个是 app 未激活；这个是 app 已经在前台、输入法处于组词态：
+
+拼音还没上屏时，落到 webview 上的第一次 mousedown 被输入法拿去结束组词，**不转发**给 WKWebView。web 层只收到一个孤儿 `mouseup`，浏览器不会凭 mouseup 合成 click，React 的 onClick 于是不触发。实测（Rime / 鼠鬚管）第一下的完整事件序列只有：
+
+```
+compositionend  →  mouseup(button[设置])          ← 没有 pointerdown / mousedown / click
+```
+
+第二下才是 `pointerdown → mousedown → mouseup → click`。**两个窗口的所有控件都中招**，不止设置齿轮：设置页里「输入框打完字直接点保存」是同一个坑。
+
+治法在 `src/lib/imeClick.ts`，`main.tsx` 里对两个窗口统一装：前面没有配对 mousedown 的孤儿 mouseup，就是被吞掉的那一下，给它补一个 click（浏览器自己补了就不重复派发；落点是文本框时顺手 `focus()`，还原原生的 mousedown → 聚焦 → click 顺序）。
+
+复现要三件事同时成立，缺一个就复现不出来、白查半天：
+
+- 输入法真的在组词（有 marked text），只是「输入框有焦点」不够；
+- 打字必须用 `CGEvent` 真键码，**AppleScript 的 `keystroke` 绕过输入法**，根本不会组词；
+- 输入源要显式选定（`TISSelectInputSource`），macOS 会按窗口记住输入源，手动切过就不可信了。
 
 划词的载荷经 `windows::present()` 送到主窗口。冷启动时事件可能早于 React 挂载，所以 `state.rs` 里留了一份暂存，`Main` 挂载时主动 `takePendingLookup()` 兜一次。
 
