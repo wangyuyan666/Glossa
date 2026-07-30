@@ -2,7 +2,7 @@
 //!
 //! 只绑 `127.0.0.1`，不对外暴露。PopClip 扩展用 shell script action 打 `POST /lookup`。
 //!
-//! 用本地端口而不是 `enassistant://` deep link 的原因：macOS 不支持运行时注册 URL scheme，
+//! 用本地端口而不是 `glossa://` deep link 的原因：macOS 不支持运行时注册 URL scheme，
 //! deep link 只有安装到 `/Applications` 的打包 .app 才能测，`tauri dev` 下无法调试。
 
 use anyhow::Result;
@@ -34,7 +34,7 @@ pub fn spawn(app: AppHandle, port: u16) {
 
 async fn serve(app: AppHandle, port: u16) -> Result<()> {
     let router = Router::new()
-        .route("/ping", get(|| async { "EnAssistant" }))
+        .route("/ping", get(|| async { "Glossa" }))
         .route("/lookup", get(lookup_get).post(lookup_post))
         .with_state(app);
 

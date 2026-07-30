@@ -128,7 +128,7 @@ export function Settings() {
 
   return (
     <div className="settings">
-      <h1>EnAssistant 设置</h1>
+      <h1>Glossa 设置</h1>
 
       <section>
         <h2>模型服务</h2>
@@ -188,7 +188,7 @@ export function Settings() {
             onChange={(e) => patch({ port: Number(e.target.value) || 8765 })}
           />
         </label>
-        <p className="muted">改端口后需重启 EnAssistant，并重新安装一次 PopClip 扩展。</p>
+        <p className="muted">改端口后需重启 Glossa，并重新安装一次 PopClip 扩展。</p>
       </section>
 
       <CaptureSection port={settings.port} savedPort={savedPort} />

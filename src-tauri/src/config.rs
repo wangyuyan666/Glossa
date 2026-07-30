@@ -1,10 +1,10 @@
 //! 配置读写。
 //!
-//! 配置文件为明文 JSON，含 API key。落盘位置 `~/Library/Application Support/EnAssistant/settings.json`，
+//! 配置文件为明文 JSON，含 API key。落盘位置 `~/Library/Application Support/Glossa/settings.json`，
 //! 权限收紧到 0600（仅当前用户可读写）。这是用户明确选择的方案，替代 Keychain。
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -12,8 +12,11 @@ use tauri::{AppHandle, Manager};
 
 use crate::templates::{self, PromptTemplate, TemplateKind};
 
-pub const APP_DIR_NAME: &str = "EnAssistant";
+pub const APP_DIR_NAME: &str = "Glossa";
 pub const SETTINGS_FILE: &str = "settings.json";
+
+/// 改名 Glossa 之前用的目录名。老用户的 API key 和历史都还落在这里，见 `migrate_legacy_dir`。
+const LEGACY_APP_DIR_NAME: &str = "EnAssistant";
 pub const DEFAULT_PORT: u16 = 8765;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -174,6 +177,42 @@ pub fn config_dir(app: &AppHandle) -> Result<PathBuf> {
 
 pub fn settings_path(app: &AppHandle) -> Result<PathBuf> {
     Ok(config_dir(app)?.join(SETTINGS_FILE))
+}
+
+/// 把 `EnAssistant` 时代的数据目录搬到新名下。必须在读配置、开数据库之前调。
+///
+/// 不搬的后果不是「少了点历史」：settings.json 里有 API key，读不到就等于让老用户
+/// 从头配一遍模型服务，还会误以为配置丢了。
+pub fn migrate_legacy_dir(app: &AppHandle) {
+    let Ok(new_dir) = config_dir(app) else { return };
+    let Some(parent) = new_dir.parent() else { return };
+    migrate_dir(&parent.join(LEGACY_APP_DIR_NAME), &new_dir);
+}
+
+/// 迁移的纯路径逻辑，抽出来是为了能用临时目录做单测。
+///
+/// 用 rename 而不是拷贝再删：同卷内是原子操作，中途失败不会留下半份数据，
+/// 也不需要单独一步「删旧目录」——改名本身就让旧路径消失了。
+fn migrate_dir(legacy: &Path, new_dir: &Path) {
+    // 新目录已存在说明新版跑过并写过东西。此时搬过去要么覆盖、要么得合并，
+    // 而删掉旧目录就是丢一份没合并的数据——宁可原地留着让用户自己处置。
+    if new_dir.exists() || !legacy.is_dir() {
+        return;
+    }
+
+    if let Err(e) = fs::rename(legacy, new_dir) {
+        eprintln!("[config] 迁移旧数据目录失败，将按首次启动处理: {e}");
+        return;
+    }
+    eprintln!(
+        "[config] 已迁移旧数据目录 {} -> {}",
+        legacy.display(),
+        new_dir.display()
+    );
+
+    // 旧名的 PopClip 扩展暂存目录跟着搬过来了，但它带的是旧 identifier，
+    // 留着只会让人以为那才是当前装着的扩展。装扩展时会按新名重新生成。
+    fs::remove_dir_all(new_dir.join("EnAssistant.popclipext")).ok();
 }
 
 /// 读配置。文件不存在或损坏时返回默认值，不报错——首次启动就是这条路径。
@@ -362,5 +401,75 @@ mod tests {
         assert_eq!(cleaned.templates.len(), 1);
         assert_eq!(cleaned.templates[0].id, "mine");
         assert!(!cleaned.templates[0].builtin);
+    }
+
+    /// 造一个临时的 `Application Support` 父目录，返回 (父目录, 旧目录, 新目录)。
+    fn migration_fixture(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let parent = std::env::temp_dir().join(format!(
+            "glossa-migrate-{}-{}-{tag}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&parent).unwrap();
+        let legacy = parent.join(LEGACY_APP_DIR_NAME);
+        let new_dir = parent.join(APP_DIR_NAME);
+        (parent, legacy, new_dir)
+    }
+
+    #[test]
+    fn migration_carries_the_old_settings_over() {
+        let (parent, legacy, new_dir) = migration_fixture("carry");
+        fs::create_dir_all(&legacy).unwrap();
+        fs::write(legacy.join(SETTINGS_FILE), r#"{"port":9001}"#).unwrap();
+
+        migrate_dir(&legacy, &new_dir);
+
+        assert!(!legacy.exists(), "改名后旧路径不该还在");
+        let raw = fs::read_to_string(new_dir.join(SETTINGS_FILE)).unwrap();
+        assert!(raw.contains("9001"), "API key 和端口必须跟着搬过来");
+
+        fs::remove_dir_all(&parent).ok();
+    }
+
+    #[test]
+    fn migration_drops_the_stale_popclip_staging_dir() {
+        // 搬过来的扩展带旧 identifier，留着会让人以为那是当前装着的那个。
+        let (parent, legacy, new_dir) = migration_fixture("popclip");
+        fs::create_dir_all(legacy.join("EnAssistant.popclipext")).unwrap();
+
+        migrate_dir(&legacy, &new_dir);
+
+        assert!(!new_dir.join("EnAssistant.popclipext").exists());
+        fs::remove_dir_all(&parent).ok();
+    }
+
+    #[test]
+    fn migration_leaves_the_old_dir_alone_when_the_new_one_exists() {
+        // 两边都有数据时搬过去等于覆盖，删旧目录等于丢一份没合并的数据。
+        let (parent, legacy, new_dir) = migration_fixture("both");
+        fs::create_dir_all(&legacy).unwrap();
+        fs::write(legacy.join(SETTINGS_FILE), "旧").unwrap();
+        fs::create_dir_all(&new_dir).unwrap();
+        fs::write(new_dir.join(SETTINGS_FILE), "新").unwrap();
+
+        migrate_dir(&legacy, &new_dir);
+
+        assert_eq!(fs::read_to_string(legacy.join(SETTINGS_FILE)).unwrap(), "旧");
+        assert_eq!(fs::read_to_string(new_dir.join(SETTINGS_FILE)).unwrap(), "新");
+
+        fs::remove_dir_all(&parent).ok();
+    }
+
+    #[test]
+    fn migration_is_a_no_op_for_a_fresh_install() {
+        let (parent, legacy, new_dir) = migration_fixture("fresh");
+
+        migrate_dir(&legacy, &new_dir);
+
+        assert!(!new_dir.exists(), "没有旧目录就不该凭空造出新目录");
+        fs::remove_dir_all(&parent).ok();
     }
 }

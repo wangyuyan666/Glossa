@@ -945,29 +945,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ef6b89e5b37196644d8796de5268852ff179b44e96276cf4290264843743bb7"
 
 [[package]]
-name = "enassistant"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "eventsource-stream",
- "futures-util",
- "objc2",
- "reqwest 0.12.28",
- "rusqlite",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "thiserror 2.0.19",
- "tokio",
- "urlencoding",
- "uuid",
-]
-
-[[package]]
 name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1469,6 +1446,29 @@ name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
+
+[[package]]
+name = "glossa"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "eventsource-stream",
+ "futures-util",
+ "objc2",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "thiserror 2.0.19",
+ "tokio",
+ "urlencoding",
+ "uuid",
+]
 
 [[package]]
 name = "gobject-sys"

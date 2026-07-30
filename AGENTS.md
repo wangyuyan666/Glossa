@@ -42,10 +42,10 @@ src-tauri/src/capture/
 已经踩明白、别再重新推一遍的坑：
 
 - **AX 的 range 是 UTF-16 code unit 索引**，Rust `String` 是 UTF-8。直接拿 range 当字节偏移切，中英混排必然切在字符中间 panic。要先转 `Vec<u16>` 再切回来。
-- **取词必须在唤起主窗口之前**。先显示窗口会让 EnAssistant 变成前台 app，接着读 AX 就读到我们自己的窗口了。
-- **前台 app 是 EnAssistant 自己时要跳过**（用户在主窗口里手滑按了快捷键）。
+- **取词必须在唤起主窗口之前**。先显示窗口会让 Glossa 变成前台 app，接着读 AX 就读到我们自己的窗口了。
+- **前台 app 是 Glossa 自己时要跳过**（用户在主窗口里手滑按了快捷键）。
 - **`RegisterEventHotKey` 优先级低**，被系统或其他 app 占用时注册会失败。必须在设置页明确报错，静默失败会让用户以为取词坏了。
-- **TCC 权限按二进制路径 + 签名记账**。`tauri dev` 跑的是 `target/debug/enassistant` 裸二进制而非 `.app` bundle，每次改 Rust 重编都换了二进制，授权可能失效或反复要权限。AX 相关功能要在 `npm run tauri build` 的产物上验证。这和 deep link 那个坑是同一类问题。
+- **TCC 权限按二进制路径 + 签名记账**。`tauri dev` 跑的是 `target/debug/Glossa` 裸二进制而非 `.app` bundle，每次改 Rust 重编都换了二进制，授权可能失效或反复要权限。AX 相关功能要在 `npm run tauri build` 的产物上验证。这和 deep link 那个坑是同一类问题。
 - 权限只需要**辅助功能**一个。CGEventTap 监听选区还要额外的**输入监控**权限，两次授权流程会明显拉高流失——这也是选快捷键而非选区监听的原因之一。
 
 上下文能力是**尽力而为**：Electron / Chrome 系 app 的 AX 实现参差，`kAXValue` 经常拿不到整段文本；Cmd+C 兜底路径永远拿不到上下文（剪贴板里只有选中内容）。这些情况降级成 `context: None` 即可，提示词本来就分了两套。
@@ -199,7 +199,7 @@ compositionend  →  mouseup(button[设置])          ← 没有 pointerdown / m
 
 ## 历史存储
 
-`history.rs`，SQLite 在 `~/Library/Application Support/EnAssistant/history.db`。
+`history.rs`，SQLite 在 `~/Library/Application Support/Glossa/history.db`。
 
 选 SQLite 不选 JSON 是为了路线图：生词本 + FSRS 复习要按到期时间查、按熟练度排序，那必须有真正的存储层。
 
@@ -235,7 +235,7 @@ turns(id, lookup_id → lookups.id ON DELETE CASCADE, seq, role, content)
 | 安装方式 | 用户**选中**整段，PopClip 条上出现 Install Extension | `open` 该目录，PopClip 弹确认框 |
 | 我们用在 | 手动安装（兜底） | 一键安装 |
 
-两种形式都带 `identifier: com.peter.enassistant`，PopClip 据此认出是同一个扩展——改端口后重装会覆盖，而不是多出一个重复图标。
+两种形式都带 `identifier: com.github.glossa`，PopClip 据此认出是同一个扩展——改端口后重装会覆盖，而不是多出一个重复图标。
 
 一键安装依赖 macOS 文件关联，Setapp 版、多版本共存、关联被别的软件抢走都可能失效，所以**手动路径必须保留**。`open` 之前先探测 PopClip 是否存在，否则 macOS 会弹「没有可打开此文件的应用」这种让人摸不着头脑的错误。
 
@@ -245,9 +245,11 @@ turns(id, lookup_id → lookups.id ON DELETE CASCADE, seq, role, content)
 
 **明文存 key 是用户明确选择的方案**，不是疏漏。文件权限收紧到 0600，README 里有安全说明。不要擅自改回 Keychain。
 
+**改 `APP_DIR_NAME` 就是断老用户的配置。** 数据目录名（`config.rs` 的 `APP_DIR_NAME`）不只是历史，settings.json 里还有 API key——换个名字对老用户等于配置全丢。项目从 EnAssistant 改名时靠 `migrate_legacy_dir()` 把旧目录整体 rename 过来，它必须排在 `config::load` 和 `History::open` 之前调（`lib.rs` 的 `setup`），否则新目录先被创建出来，迁移条件不成立。真要再改名，照这个模式加一层，别直接换常量。
+
 **结构化输出不用 `response_format` / tool use。** 多数 OpenAI 兼容端点（Ollama、LM Studio、各类中转）不支持或行为不一致。释义靠提示词约束 JSON，前端 `jsonish.ts` 做容错增量解析。这是跨协议唯一稳的做法，改用原生结构化输出会让一半端点挂掉。
 
-**用本地端口而不是 `enassistant://` deep link。** macOS 不支持运行时注册 URL scheme，deep link 只有装到 `/Applications` 的打包 .app 才能测，`tauri dev` 下无法调试。另外 PopClip 的 url action 会顺带打开浏览器标签页，所以片段用的是 shell script action。
+**用本地端口而不是 `glossa://` deep link。** macOS 不支持运行时注册 URL scheme，deep link 只有装到 `/Applications` 的打包 .app 才能测，`tauri dev` 下无法调试。另外 PopClip 的 url action 会顺带打开浏览器标签页，所以片段用的是 shell script action。
 
 **两个窗口常驻不销毁。** 关闭按钮只 `hide()`（`lib.rs` 的 `on_window_event`），避免每次查询重建 webview。
 
@@ -322,7 +324,7 @@ curl -X POST http://127.0.0.1:8765/lookup \
 
 阶段一整套功能都能在 `tauri dev` 下验完——取词走 PopClip + 本地 HTTP，完全不碰系统权限。
 
-阶段二 `capture/` 落地后不成立了：`tauri dev` 跑的是 `target/debug/enassistant` 裸二进制，TCC 对未签名/ad-hoc 二进制按**路径 + cdhash** 记账，每次改 Rust 重编 hash 就变、辅助功能授权随之失效（详见上面 AX 那节的坑列表）。分三层处理：
+阶段二 `capture/` 落地后不成立了：`tauri dev` 跑的是 `target/debug/Glossa` 裸二进制，TCC 对未签名/ad-hoc 二进制按**路径 + cdhash** 记账，每次改 Rust 重编 hash 就变、辅助功能授权随之失效（详见上面 AX 那节的坑列表）。分三层处理：
 
 1. **纯逻辑走 `cargo test`** — UTF-16 range 切片、`context.rs` 的前后文截取都是纯函数，不需要真机权限，别为了跑它们去 build。
 2. **AX 真机行为在 `npm run tauri build` 产物上验** — 产物 `.app` 放固定路径（`/Applications` 或一个不会挪的目录）再授权，之后反复启动都算同一个 app。不要在 `target/debug/` 里授权。

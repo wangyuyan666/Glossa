@@ -17,7 +17,7 @@ use tauri::AppHandle;
 
 use crate::config;
 
-pub const EXTENSION_DIR_NAME: &str = "EnAssistant.popclipext";
+pub const EXTENSION_DIR_NAME: &str = "Glossa.popclipext";
 
 /// PopClip 可能被装在这几个位置。Setapp 版路径和常规版不同。
 const POPCLIP_PATHS: [&str; 2] = [
@@ -55,8 +55,8 @@ pub fn find_popclip() -> Option<PathBuf> {
 /// 而不是在 PopClip 条上多出一个重复图标。
 pub fn config_yaml(port: u16) -> String {
     format!(
-        r#"name: EnAssistant
-identifier: com.peter.enassistant
+        r#"name: Glossa
+identifier: com.github.glossa
 icon: symbol:character.book.closed
 interpreter: bash
 shell script: curl -s -X POST http://127.0.0.1:{port}/lookup --data-urlencode "q=$POPCLIP_TEXT" -o /dev/null
@@ -68,8 +68,8 @@ shell script: curl -s -X POST http://127.0.0.1:{port}/lookup --data-urlencode "q
 pub fn snippet(port: u16) -> String {
     format!(
         r#"#popclip
-name: EnAssistant
-identifier: com.peter.enassistant
+name: Glossa
+identifier: com.github.glossa
 icon: symbol:character.book.closed
 interpreter: bash
 shell script: curl -s -X POST http://127.0.0.1:{port}/lookup --data-urlencode "q=$POPCLIP_TEXT" -o /dev/null"#
@@ -139,13 +139,13 @@ mod tests {
 
     #[test]
     fn both_forms_share_an_identifier_so_reinstall_overwrites() {
-        assert!(config_yaml(8765).contains("identifier: com.peter.enassistant"));
-        assert!(snippet(8765).contains("identifier: com.peter.enassistant"));
+        assert!(config_yaml(8765).contains("identifier: com.github.glossa"));
+        assert!(snippet(8765).contains("identifier: com.github.glossa"));
     }
 
     #[test]
     fn writes_config_into_the_extension_directory() {
-        let base = std::env::temp_dir().join(format!("enassistant-test-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("glossa-test-{}", std::process::id()));
         let dir = base.join(EXTENSION_DIR_NAME);
         write_extension(&dir, 8765).unwrap();
 

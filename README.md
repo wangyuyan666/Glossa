@@ -1,8 +1,8 @@
-# EnAssistant
+# Glossa
 
 macOS 上的 LLM 英语学习工具。在任意 app 里划中不认识的词，主窗口给出**结合上下文**的释义，可以继续追问，查过的词留在历史里。
 
-和普通词典的区别在于上下文：词典给的是这个词的全部义项，EnAssistant 给的是「这句话里它是什么意思」。
+和普通词典的区别在于上下文：词典给的是这个词的全部义项，Glossa 给的是「这句话里它是什么意思」。
 
 > 当前是**阶段一**。取词层借用 PopClip，因此拿不到选中词的上下文，释义会降级为「最常见义项」。真正的上下文能力在阶段二自建取词层后落地，见 [路线图](#路线图)。
 
@@ -64,9 +64,9 @@ http://127.0.0.1:1234/v1       # LM Studio
 
 ## 配置 PopClip 取词
 
-设置窗口 → **取词** → 点「安装到 PopClip」。EnAssistant 会生成扩展并交给 PopClip，在它弹出的确认框里点安装即可。
+设置窗口 → **取词** → 点「安装到 PopClip」。Glossa 会生成扩展并交给 PopClip，在它弹出的确认框里点安装即可。
 
-安装后：在任意 app 里选中英文 → PopClip 条上点 EnAssistant 图标 → 主窗口唤起并开始查询。
+安装后：在任意 app 里选中英文 → PopClip 条上点 Glossa 图标 → 主窗口唤起并开始查询。
 
 ### 手动安装
 
@@ -78,8 +78,8 @@ http://127.0.0.1:1234/v1       # LM Studio
 
 ```yaml
 #popclip
-name: EnAssistant
-identifier: com.peter.enassistant
+name: Glossa
+identifier: com.github.glossa
 icon: symbol:character.book.closed
 interpreter: bash
 shell script: curl -s -X POST http://127.0.0.1:8765/lookup --data-urlencode "q=$POPCLIP_TEXT" -o /dev/null
@@ -89,11 +89,18 @@ shell script: curl -s -X POST http://127.0.0.1:8765/lookup --data-urlencode "q=$
 
 ### 没反应的排查
 
-1. EnAssistant 在跑吗——`curl http://127.0.0.1:8765/ping` 应返回 `EnAssistant`
-2. 端口对得上吗——改过端口要重启 EnAssistant 并重新安装一次扩展
+1. Glossa 在跑吗——`curl http://127.0.0.1:8765/ping` 应返回 `Glossa`
+2. 端口对得上吗——改过端口要重启 Glossa 并重新安装一次扩展
 3. PopClip 里该扩展没被禁用吧
 
-> 为什么用本地端口而不是 `enassistant://` deep link：macOS 不支持运行时注册 URL scheme，deep link 只有装到 `/Applications` 的打包 .app 才能测，`tauri dev` 下没法调试。另外 PopClip 的 url action 会顺带打开浏览器标签页。
+> 为什么用本地端口而不是 `glossa://` deep link：macOS 不支持运行时注册 URL scheme，deep link 只有装到 `/Applications` 的打包 .app 才能测，`tauri dev` 下没法调试。另外 PopClip 的 url action 会顺带打开浏览器标签页。
+
+## 从 EnAssistant 升级
+
+本项目原名 EnAssistant，改名后有两件事：
+
+- **数据自动迁移**。首次启动时 `~/Library/Application Support/EnAssistant/` 会整体改名为 `Glossa/`，模型服务配置和查词历史都保留，不用手动搬。如果两个目录同时存在（新版已经跑过并写过数据），迁移会跳过，旧目录原样留着由你处置。
+- **PopClip 里的旧扩展要手动删**。扩展 identifier 从 `com.peter.enassistant` 变成了 `com.github.glossa`，PopClip 会当成两个扩展，条上出现两个图标。去 PopClip 的扩展列表里删掉 EnAssistant 那个。
 
 ## 主窗口
 
@@ -148,7 +155,7 @@ shell script: curl -s -X POST http://127.0.0.1:8765/lookup --data-urlencode "q=$
 ## 历史存在哪
 
 ```
-~/Library/Application Support/EnAssistant/history.db
+~/Library/Application Support/Glossa/history.db
 ```
 
 SQLite。这是**历史流水**不是词表：同一个词查两次记两条。
@@ -164,10 +171,10 @@ SQLite。这是**历史流水**不是词表：同一个词查两次记两条。
 API key 以**明文** JSON 保存在：
 
 ```
-~/Library/Application Support/EnAssistant/settings.json
+~/Library/Application Support/Glossa/settings.json
 ```
 
-文件权限收紧到 `0600`（仅当前用户可读写），但明文落盘意味着：任何能读该文件的进程或用户都能拿到 key，文件也会进入 Time Machine 备份和任何目录同步。介意的话请为 EnAssistant 单独申请一个额度受限的 key。
+文件权限收紧到 `0600`（仅当前用户可读写），但明文落盘意味着：任何能读该文件的进程或用户都能拿到 key，文件也会进入 Time Machine 备份和任何目录同步。介意的话请为 Glossa 单独申请一个额度受限的 key。
 
 设置界面里 key 默认以圆点显示，点右侧小眼睛可切换明文。
 
@@ -176,7 +183,7 @@ API key 以**明文** JSON 保存在：
 - **阶段一拿不到上下文**。PopClip 只传选中的那几个词，不提供所在语句，也不提供来源 app。释义因此退化成常见义项。
 - 依赖 PopClip（付费软件）。
 - 没有生词本和复习，查过的词不落库。
-- 改取词端口后需重启 EnAssistant。
+- 改取词端口后需重启 Glossa。
 
 ## 路线图
 

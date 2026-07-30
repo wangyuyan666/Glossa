@@ -514,6 +514,11 @@ pub fn run() {
         .manage(AppState::default())
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // 必须排在 load 和 History::open 之前：这两步一旦先跑，新目录就被创建出来，
+            // 迁移只好放弃，老用户的 key 和历史就此失联。
+            config::migrate_legacy_dir(&handle);
+
             let settings = config::load(&handle);
 
             app.manage(history::History::open(&handle)?);

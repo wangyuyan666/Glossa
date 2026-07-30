@@ -1,5 +1,5 @@
 [package]
-name = "enassistant"
+name = "glossa"
 version = "0.1.0"
 description = "LLM-powered English learning assistant with cross-app word lookup"
 authors = ["you"]
@@ -11,8 +11,15 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "enassistant_lib"
+name = "glossa_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+# bin target 名字必须大写。`tauri dev` 跑的是裸二进制而不是 .app bundle，没有 Info.plist
+# 可读，macOS 就拿 argv[0] 当应用名——Dock 悬停和菜单栏都会显示成小写的包名。
+# Cargo 包名不能大写，所以在这儿单独指定，同时 path 也要显式写（默认探测只认包名同名的 bin）。
+[[bin]]
+name = "Glossa"
+path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

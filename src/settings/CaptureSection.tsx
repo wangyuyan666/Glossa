@@ -68,7 +68,7 @@ export function CaptureSection({ port, savedPort }: Props) {
     <section>
       <h2>取词</h2>
       <p className="muted">
-        阶段一的取词由 PopClip 完成：在任意 app 里选中英文，点 PopClip 条上的 EnAssistant
+        阶段一的取词由 PopClip 完成：在任意 app 里选中英文，点 PopClip 条上的 Glossa
         图标即可查询。
       </p>
 
