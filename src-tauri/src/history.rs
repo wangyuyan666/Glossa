@@ -118,7 +118,8 @@ pub fn now_ms() -> i64 {
         .unwrap_or_default()
 }
 
-/// 从释义 JSON 里取侧栏副标题：单词模式用 `senseHere`，句子模式用 `translation`。
+/// 从释义 JSON 里取侧栏副标题：单词模式用 `senseHere`，句子模式用 `translation`，
+/// 翻译模式用 `english`。少一个回退，那类记录在侧栏就是空的一行。
 ///
 /// 模型可能给 JSON 裹上代码块、也可能整个输出不合法——取不到就返回空串，
 /// 不该因为副标题解析失败就让整条历史存不进去。
@@ -132,7 +133,7 @@ fn extract_sense(explanation: &str) -> String {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
         return String::new();
     };
-    ["senseHere", "translation"]
+    ["senseHere", "translation", "english"]
         .iter()
         .find_map(|key| value[*key].as_str().filter(|s| !s.is_empty()))
         .unwrap_or_default()

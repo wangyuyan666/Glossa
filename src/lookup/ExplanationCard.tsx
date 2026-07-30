@@ -11,7 +11,7 @@ interface Props {
  * 释义卡片。字段是流式逐个到齐的，所以每块都独立判空——
  * 不能等整份 JSON 收完再渲染，那样就没有"边收边看"的效果了。
  *
- * 单词和句子两套字段，按存在性分流：模型先吐哪个字段就先渲染哪套。
+ * 单词、句子、译成英文三套字段，按存在性分流：模型先吐哪个字段就先渲染哪套。
  */
 export function ExplanationCard({ explanation, streaming, raw }: Props) {
   // 还没解析出任何字段：显示骨架屏，而不是空白或原始 JSON 碎片。
@@ -27,13 +27,21 @@ export function ExplanationCard({ explanation, streaming, raw }: Props) {
     );
   }
 
-  // grammar 两套 schema 都有，不能拿它分流，只看各自独有的字段。
+  // grammar 释义的两套 schema 都有，不能拿它分流，只看各自独有的字段。
+  const isTranslate =
+    !!explanation.english || !!explanation.wordChoice?.length || !!explanation.alternatives?.length;
   const isSentence =
     !!explanation.translation || !!explanation.structure || !!explanation.keyPoints?.length;
 
   return (
     <div className={`card${streaming ? " card--streaming" : ""}`}>
-      {isSentence ? <SentenceBody {...explanation} /> : <WordBody {...explanation} />}
+      {isTranslate ? (
+        <TranslateBody {...explanation} />
+      ) : isSentence ? (
+        <SentenceBody {...explanation} />
+      ) : (
+        <WordBody {...explanation} />
+      )}
     </div>
   );
 }
@@ -73,6 +81,41 @@ function SentenceBody({ grammar, translation, structure, keyPoints }: Partial<Ex
             </div>
           ))}
         </dl>
+      )}
+    </>
+  );
+}
+
+/**
+ * 选中内容不是英文时的卡片：译文在最上，选词理由是主体。
+ *
+ * 这里没有 GrammarNote——原文本来就不是英文。
+ */
+function TranslateBody({ english, wordChoice, alternatives }: Partial<Explanation>) {
+  return (
+    <>
+      {english && <p className="card__english">{english}</p>}
+
+      {!!wordChoice?.length && (
+        <dl className="card__points">
+          {wordChoice.map((point, i) => (
+            <div key={i} className="card__point">
+              <dt>{point.term}</dt>
+              <dd>{point.note}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {!!alternatives?.length && (
+        <ul className="card__alternatives">
+          {alternatives.map((alt, i) => (
+            <li key={i}>
+              <p className="card__alt-text">{alt.text}</p>
+              {alt.when && <p className="card__alt-when">{alt.when}</p>}
+            </li>
+          ))}
+        </ul>
       )}
     </>
   );

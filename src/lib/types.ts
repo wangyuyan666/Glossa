@@ -23,11 +23,12 @@ export interface RoleBinding {
   model: string;
 }
 
-export type TemplateKind = "word" | "sentence" | "chat";
+export type TemplateKind = "word" | "sentence" | "translate" | "chat";
 
 export const TEMPLATE_KIND_LABELS: Record<TemplateKind, string> = {
   word: "释义（单词）",
   sentence: "释义（句子）",
+  translate: "译成英文",
   chat: "追问对话",
 };
 
@@ -69,6 +70,7 @@ export interface Settings {
   /** 各类当前启用的模板 id，null 或指向已删除的模板都回落到内置 */
   activeWord: string | null;
   activeSentence: string | null;
+  activeTranslate: string | null;
   activeChat: string | null;
 }
 
@@ -108,12 +110,14 @@ export interface LookupPayload {
 /**
  * 释义卡片。流式期间为部分字段，故用处都是 `Partial<Explanation>`。
  *
- * 单词和句子是两套字段，Rust 侧按选中内容长度决定用哪套提示词（见 prompts.rs 的
- * `is_sentence`）。卡片按字段存在性渲染，不需要额外的模式标记。
+ * 单词、句子、译成英文是三套字段，Rust 侧决定用哪套提示词：先看是不是英文
+ * （`looks_foreign`），再看长度（`is_sentence`），都在 prompts.rs。
+ * 卡片按字段存在性渲染，不需要额外的模式标记。
  */
 export interface Explanation {
   /**
-   * 选中内容本身的拼写 / 语法纠错。两套 schema 都有，所以不能拿它区分词和句。
+   * 选中内容本身的拼写 / 语法纠错。释义的两套 schema 都有，所以不能拿它区分词和句；
+   * 翻译模式没有这一项（原文本来就不是英文）。
    * 没有问题时两项都是空串，卡片不渲染这一块。
    */
   grammar: { issue: string; corrected: string };
@@ -131,6 +135,14 @@ export interface Explanation {
   translation: string;
   structure: string;
   keyPoints: { term: string; note: string }[];
+
+  // ---- 译成英文（选中内容不是英文时）----
+  /** 最地道的英文说法 */
+  english: string;
+  /** 为什么用这些词。翻译模式的重点，不是附赠 */
+  wordChoice: { term: string; note: string }[];
+  /** 别的说法 + 适用场合 */
+  alternatives: { text: string; when: string }[];
 }
 
 export interface ChatMessage {

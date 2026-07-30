@@ -14,15 +14,18 @@ interface Props {
   onPatch: (fields: Partial<SettingsData>) => void;
 }
 
-const KINDS: TemplateKind[] = ["word", "sentence", "chat"];
+const KINDS: TemplateKind[] = ["word", "sentence", "translate", "chat"];
 
 /** 各类当前选中的模板 id 存在不同字段里，这里统一读写。 */
+const ACTIVE_FIELDS: Record<TemplateKind, keyof SettingsData> = {
+  word: "activeWord",
+  sentence: "activeSentence",
+  translate: "activeTranslate",
+  chat: "activeChat",
+};
+
 function activeField(kind: TemplateKind): keyof SettingsData {
-  return kind === "word"
-    ? "activeWord"
-    : kind === "sentence"
-      ? "activeSentence"
-      : "activeChat";
+  return ACTIVE_FIELDS[kind];
 }
 
 export function PromptSection({ settings, onPatch }: Props) {
@@ -77,6 +80,7 @@ export function PromptSection({ settings, onPatch }: Props) {
     <section>
       <h2>提示词</h2>
       <p className="muted">
+        按选中的内容自动选用：不是英文走「译成英文」，长句走句子，其余走单词。
         内置模板不可修改、不可删除，但可以「复制为我的」再改。删掉正在用的模板会自动回落到内置。
       </p>
 

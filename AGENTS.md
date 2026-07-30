@@ -93,7 +93,7 @@ src/
 
 ## 提示词模板
 
-`templates.rs`。三类（`word` / `sentence` / `chat`）各自独立选用——用户想只改释义风格、保留默认对话，不该被迫连对话一起写。
+`templates.rs`。四类（`word` / `sentence` / `translate` / `chat`）各自独立选用——用户想只改释义风格、保留默认对话，不该被迫连对话一起写。
 
 **内置模板留在代码里，不写进 `settings.json`**，配置只记「当前选了哪个 id」。内置提示词以后还会改；把副本存进用户配置的话，升级后用户还在跑旧提示词，而且完全看不出来。`config::sanitize()` 在落盘前剔除内置副本、并把 `builtin` 标记强制置 false。
 
@@ -112,29 +112,34 @@ src/
 
 自定义提示词的固有代价：卡片渲染稳定是因为内置提示词经过调试，用户写的模板漏字段、或被模型忽略，卡片就会缺块。这不是能修的 bug。
 
-## 单词模式与句子模式
+## 三种释义模式
 
-选中一整句时，输出必须是**整句翻译 + 难点**，不能退化成挑一个词解释。
+选中一整句时，输出必须是**整句翻译 + 难点**，不能退化成挑一个词解释。选中的内容不是英文时，那是「这句话英语怎么说」，不是「这是什么意思」。
 
-判定在 Rust 侧（`prompts.rs` 的 `is_sentence`），不交给模型——确定性、可单测、不多花一次调用。规则：六个词以上，或三词以上且带句末标点。
+判定全在 Rust 侧（`prompts.rs` 的 `kind_for`），不交给模型——确定性、可单测、不多花一次调用。**顺序不能反**：
 
-两套提示词、两套 JSON 结构：
+1. `looks_foreign` — 出现任意一个非拉丁字母（码位 > U+024F 的字母字符）就走翻译。中文没有空格，`is_sentence` 数出来永远是 1 个词，不先拦这一道的话整段中文会落进单词模板。`café` / `naïve` 是拉丁字母，不会误判。
+2. `is_sentence` — 六个词以上，或三词以上且带句末标点。
 
-| | 单词 / 短语 | 句子 |
-| --- | --- | --- |
-| 字段 | `grammar{issue,corrected}` `word` `phonetic` `pos` `senseHere` `why` `collocations[]` `example` | `grammar{issue,corrected}` `translation` `structure` `keyPoints[{term,note}]` |
-| 上下文 | 用 `context` 定位此处义项 | 不用——句子本身就是自己的上下文 |
+三套提示词、三套 JSON 结构：
 
-**别把两套字段合成一套。** 句子走单词 schema 时，`word`（词条原形）/`phonetic`/`pos` 会逼着模型从句子里挑一个词来填，症状就是「选了一整句却只翻译其中一个单词」。这是本项目实际踩过的 bug。
+| | 单词 / 短语 | 句子 | 译成英文 |
+| --- | --- | --- | --- |
+| 字段 | `grammar{issue,corrected}` `word` `phonetic` `pos` `senseHere` `why` `collocations[]` `example` | `grammar{issue,corrected}` `translation` `structure` `keyPoints[{term,note}]` | `english` `wordChoice[{term,note}]` `alternatives[{text,when}]` |
+| 上下文 | 用 `context` 定位此处义项 | 不用——句子本身就是自己的上下文 | 不用 |
 
-`grammar` 是选中内容的拼写 / 语法纠错，排在两套 schema 的最前，没毛病时两个子字段都是空串、卡片不渲染这一块。
+**别把几套字段合成一套。** 句子或中文走单词 schema 时，`word`（词条原形）/`phonetic`/`pos` 会逼着模型挑个词来填、给中文标音标，症状就是「选了一整句却只翻译其中一个单词」。这是本项目实际踩过的 bug。
 
-- **两套都有**，因为 `is_sentence` 挡不住短错句：`how's is goging today` 才 4 个词又没句末标点，判成词组走单词模板，只加在句子模板上等于没加。也正因为两套都有，**它不能用来判断是词还是句**，`ExplanationCard` 分流只看 `translation`/`structure`/`keyPoints`。
+翻译模式的重点是 `wordChoice`（**为什么用这些词**），不是译文本身——译文别的工具也给得出，选词理由才是这里要教的。`alternatives` 给语域/语气不同的备选。翻译模式**没有 `grammar`**：原文本来就不是英文。
+
+`grammar` 是选中内容的拼写 / 语法纠错，排在两套释义 schema 的最前，没毛病时两个子字段都是空串、卡片不渲染这一块。
+
+- **两套都有**，因为 `is_sentence` 挡不住短错句：`how's is goging today` 才 4 个词又没句末标点，判成词组走单词模板，只加在句子模板上等于没加。也正因为两套都有，**它不能用来判断是词还是句**，`ExplanationCard` 分流只看各自独有的字段。
 - **不在** `required_fields` 里：加进去会让用户已有的自建模板立刻变 error，实测探针也会在「样例本来就没语法错」时误判模型漏了字段。
 
-前端 `ExplanationCard` 按字段存在性分流，不需要额外的模式标记——`parsePartialJson` 返回的本来就是部分对象，流式渲染天然继续工作。
+前端 `ExplanationCard` 按字段存在性分流（`english`/`wordChoice`/`alternatives` → 翻译，`translation`/`structure`/`keyPoints` → 句子，其余 → 单词），不需要额外的模式标记——`parsePartialJson` 返回的本来就是部分对象，流式渲染天然继续工作。
 
-`history.rs` 的 `extract_sense` 取侧栏副标题时 `senseHere` → `translation` 依次回退，否则句子记录在侧栏是空的一行。
+`history.rs` 的 `extract_sense` 取侧栏副标题时 `senseHere` → `translation` → `english` 依次回退，少一个回退那类记录在侧栏就是空的一行。
 
 ## 两个窗口
 

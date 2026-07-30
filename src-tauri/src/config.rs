@@ -90,6 +90,8 @@ pub struct Settings {
     #[serde(default)]
     pub active_sentence: Option<String>,
     #[serde(default)]
+    pub active_translate: Option<String>,
+    #[serde(default)]
     pub active_chat: Option<String>,
 }
 
@@ -112,6 +114,7 @@ impl Default for Settings {
             templates: Vec::new(),
             active_word: None,
             active_sentence: None,
+            active_translate: None,
             active_chat: None,
         }
     }
@@ -136,6 +139,7 @@ impl Settings {
         match kind {
             TemplateKind::Word => self.active_word.as_ref(),
             TemplateKind::Sentence => self.active_sentence.as_ref(),
+            TemplateKind::Translate => self.active_translate.as_ref(),
             TemplateKind::Chat => self.active_chat.as_ref(),
         }
     }

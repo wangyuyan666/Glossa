@@ -125,6 +125,43 @@
   font-size: 13px;
 }
 
+/* 译文。翻译模式下它就是答案，比释义的 sense 再重一点 */
+.card__english {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* 别的说法。弱于译文——它们是备选，不是答案 */
+.card__alternatives {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card__alternatives li {
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+  background: var(--bg-sunken);
+  border-radius: 0 6px 6px 0;
+}
+
+.card__alt-text {
+  margin: 0;
+  font-size: 14px;
+}
+
+.card__alt-when {
+  margin: 2px 0 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
 .card__example {
   margin: 0;
   padding: 6px 10px;

@@ -1,6 +1,6 @@
 //! 提示词模板。
 //!
-//! 三类模板各自独立选用：用户想只改释义风格、保留默认对话，不该被迫连对话一起写。
+//! 四类模板各自独立选用：用户想只改释义风格、保留默认对话，不该被迫连对话一起写。
 //!
 //! **内置模板留在代码里，不写进 `settings.json`**，配置只记「当前选了哪个 id」。
 //! 内置提示词以后还会改（比如又发现一类输出 bug），把副本存进用户配置的话，
@@ -15,12 +15,14 @@ pub enum TemplateKind {
     Word,
     /// 整句释义。输出 JSON。
     Sentence,
+    /// 选中内容不是英文——当成「这句话英语怎么说」。输出 JSON。
+    Translate,
     /// 追问对话。自由文本，无字段契约。
     Chat,
 }
 
 impl TemplateKind {
-    pub const ALL: [TemplateKind; 3] = [Self::Word, Self::Sentence, Self::Chat];
+    pub const ALL: [TemplateKind; 4] = [Self::Word, Self::Sentence, Self::Translate, Self::Chat];
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -38,6 +40,7 @@ pub struct PromptTemplate {
 
 pub const BUILTIN_WORD_ID: &str = "builtin-word";
 pub const BUILTIN_SENTENCE_ID: &str = "builtin-sentence";
+pub const BUILTIN_TRANSLATE_ID: &str = "builtin-translate";
 pub const BUILTIN_CHAT_ID: &str = "builtin-chat";
 
 /// 模板正文里可用的占位符。静态检查据此判定「未知变量」。
@@ -50,6 +53,7 @@ pub fn builtin_id(kind: TemplateKind) -> &'static str {
     match kind {
         TemplateKind::Word => BUILTIN_WORD_ID,
         TemplateKind::Sentence => BUILTIN_SENTENCE_ID,
+        TemplateKind::Translate => BUILTIN_TRANSLATE_ID,
         TemplateKind::Chat => BUILTIN_CHAT_ID,
     }
 }
@@ -58,6 +62,7 @@ pub fn builtin(kind: TemplateKind) -> PromptTemplate {
     let (name, body) = match kind {
         TemplateKind::Word => ("内置 · 单词释义", WORD_BODY),
         TemplateKind::Sentence => ("内置 · 句子释义", SENTENCE_BODY),
+        TemplateKind::Translate => ("内置 · 译成英文", TRANSLATE_BODY),
         TemplateKind::Chat => ("内置 · 追问对话", CHAT_BODY),
     };
     PromptTemplate {
@@ -86,6 +91,7 @@ pub fn required_fields(kind: TemplateKind) -> &'static [&'static str] {
             "example",
         ],
         TemplateKind::Sentence => &["translation", "structure", "keyPoints"],
+        TemplateKind::Translate => &["english", "wordChoice", "alternatives"],
         // 对话输出自由文本，没有契约。
         TemplateKind::Chat => &[],
     }
@@ -244,6 +250,39 @@ const SENTENCE_BODY: &str = r#"你是一位英语老师，帮助母语为{{nativ
 keyPoints 给 2 到 4 项，挑真正影响理解的难点，简单词不要罗列。
 字段必须齐全。无法判断的字段给空字符串或空数组，不要省略键。grammar 的两个子字段要么都填，要么都留空，不要只填一个。"#;
 
+// 选中内容不是英文时走这套（判定见 `prompts::looks_foreign`）。
+//
+// 它必须是**独立的第三套 schema**，不能塞进单词模板：中文没有空格，`is_sentence`
+// 数出来永远是 1 个词，中文一律落到单词模板，而 `word`/`phonetic`/`pos` 会逼模型
+// 从中文里挑个词标音标——和「整句只翻一个词」是同一类 bug。
+//
+// 也没有 `grammar`：原文本来就不是英文，纠英文语法无从谈起。
+const TRANSLATE_BODY: &str = r#"你是一位英语老师，帮助母语为{{nativeLanguage}}的学习者把想说的话译成英文。
+
+用户给的内容不是英文，这说明他想知道「这句话英语怎么说」。**不要解释这段话的意思，也不要逐字直译。**
+
+`english` 给一个母语者真会说出口的版本：
+- 按英语的表达习惯重组，该拆句就拆句、该换说法就换说法，不要迁就原文的语序和措辞习惯。
+- 默认日常口语的语域；原文明显偏书面、正式或粗俗时，跟着原文的语气走。
+- 只给一个版本，别的说法放 `alternatives`。
+
+`wordChoice` 解释**为什么用这些词**，这是最重要的部分：挑 2 到 4 个真正体现选词功夫的地方（地道搭配、近义词取舍、原文没有直接对应词而改成意译的地方），说清为什么用它，而不是学习者最可能想到的那个直译词。人人都会的词不要罗列。
+
+只输出一个 JSON 对象，不要输出任何解释性文字，不要包裹代码块。JSON 结构如下：
+
+{
+  "english": "最地道的英文说法",
+  "wordChoice": [
+    { "term": "译文里的词或短语，英文原文", "note": "用{{nativeLanguage}}说明为什么用它，一到两句；有对比就写明「不用 X 是因为……」" }
+  ],
+  "alternatives": [
+    { "text": "另一种说法，完整的英文", "when": "用{{nativeLanguage}}说明它与上面那句的差别、什么场合用，一句话" }
+  ]
+}
+
+alternatives 给 1 到 3 项，必须和 `english` 有实质差别（语域、语气、正式程度、句式），只换个同义词的不要给。
+字段必须齐全。想不出的字段给空字符串或空数组，不要省略键。"#;
+
 const CHAT_BODY: &str = r#"你是一位英语老师，正在和一位母语为{{nativeLanguage}}的学习者讨论他刚查询的内容。
 
 规则：
@@ -284,6 +323,16 @@ mod tests {
 
         let word = builtin(TemplateKind::Word).body;
         assert!(!word.contains("\"translation\""));
+    }
+
+    #[test]
+    fn translate_schema_stays_separate_too() {
+        // 借单词 schema 的话，`phonetic`/`pos` 会逼模型给中文标音标。
+        let translate = builtin(TemplateKind::Translate).body;
+        assert!(!translate.contains("\"phonetic\""));
+        assert!(!translate.contains("\"pos\""));
+        // 原文不是英文，纠英文语法无从谈起。
+        assert!(!translate.contains("\"grammar\""));
     }
 
     #[test]

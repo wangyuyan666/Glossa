@@ -17,6 +17,7 @@ const EMPTY: SettingsData = {
   templates: [],
   activeWord: null,
   activeSentence: null,
+  activeTranslate: null,
   activeChat: null,
 };
 
