@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import * as api from "../lib/api";
 import type { RoleBinding, Settings as SettingsData } from "../lib/types";
 import { PROTOCOL_DEFAULT_BASE_URL } from "../lib/types";
-import { IconCopy, IconWarn } from "../ui/icons";
+import { IconChevronDown, IconCopy, IconWarn } from "../ui/icons";
 import { CaptureSection } from "./CaptureSection";
 import { PromptSection } from "./PromptSection";
 import { ProviderEditor } from "./ProviderEditor";
@@ -99,23 +99,28 @@ export function Settings() {
           <strong>{label}</strong>
           <small>{hint}</small>
         </div>
-        <select
-          value={binding?.providerId ?? ""}
-          onChange={(e) =>
-            onChange(
-              e.target.value
-                ? { providerId: e.target.value, model: binding?.model ?? "" }
-                : null,
-            )
-          }
-        >
-          <option value="">未配置</option>
-          {settings.providers.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name || "(未命名)"}
-            </option>
-          ))}
-        </select>
+        <span className="select-field">
+          <select
+            value={binding?.providerId ?? ""}
+            onChange={(e) =>
+              onChange(
+                e.target.value
+                  ? { providerId: e.target.value, model: binding?.model ?? "" }
+                  : null,
+              )
+            }
+          >
+            {/* 只在还没绑的时候当占位。绑好之后列表里只剩真实厂商，
+                不留一个选了会把绑定清掉的空项。 */}
+            {!binding && <option value="">未配置</option>}
+            {settings.providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name || "(未命名)"}
+              </option>
+            ))}
+          </select>
+          <IconChevronDown className="select-field__arrow" />
+        </span>
         <input
           value={binding?.model ?? ""}
           list={listId}
@@ -163,9 +168,7 @@ export function Settings() {
           <section className="settings-card">
             <h2>模型服务</h2>
             <p className="muted">
-              <code>openai</code> 协议覆盖 OpenAI 官方、DeepSeek、硅基流动、OpenRouter、Groq、Ollama、LM
-              Studio 等；<code>anthropic</code> 协议覆盖 Anthropic 官方及兼容代理。base_url
-              结尾带不带 <code>/v1</code> 都可以。
+              配置 OpenAI 兼容服务，如 OpenAI、DeepSeek、OpenRouter、Groq、Ollama 等。
             </p>
 
             {settings.providers.map((provider) => (
@@ -187,7 +190,7 @@ export function Settings() {
               />
             ))}
 
-            <button type="button" onClick={addProvider}>
+            <button type="button" className="add-provider" onClick={addProvider}>
               + 添加服务
             </button>
           </section>

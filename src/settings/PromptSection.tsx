@@ -7,6 +7,7 @@ import type {
   TemplateKind,
 } from "../lib/types";
 import { TEMPLATE_KIND_LABELS } from "../lib/types";
+import { IconChevronDown } from "../ui/icons";
 import { TemplateEditor } from "./TemplateEditor";
 
 interface Props {
@@ -92,19 +93,22 @@ export function PromptSection({ settings, onPatch }: Props) {
             <div className="role__label">
               <strong>{TEMPLATE_KIND_LABELS[kind]}</strong>
             </div>
-            <select
-              value={active ?? ""}
-              onChange={(e) => setActive(kind, e.target.value || null)}
-            >
-              <option value="">内置</option>
-              {options
-                .filter((t) => !t.builtin)
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name || "(未命名)"}
-                  </option>
-                ))}
-            </select>
+            <span className="select-field">
+              <select
+                value={active ?? ""}
+                onChange={(e) => setActive(kind, e.target.value || null)}
+              >
+                <option value="">内置</option>
+                {options
+                  .filter((t) => !t.builtin)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name || "(未命名)"}
+                    </option>
+                  ))}
+              </select>
+              <IconChevronDown className="select-field__arrow" />
+            </span>
           </div>
         );
       })}

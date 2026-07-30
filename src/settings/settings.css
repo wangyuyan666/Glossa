@@ -78,13 +78,42 @@
 
 .provider__head {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
 }
 
-.provider__name {
-  flex: 1;
-  font-weight: 600;
+/* 名字平时就是卡片标题，只有指上去 / 编辑时才露出输入框的边。
+   宽度收在内容附近，右边的协议标签才能紧跟着名字，而不是被推到删除按钮旁 */
+.provider .provider__name {
+  flex: 0 1 160px;
+  min-width: 0;
+  padding: 4px 6px;
+  margin-left: -6px;
+  font-size: 16px;
+  font-weight: 650;
+  border-color: transparent;
+  background: transparent;
+}
+
+.provider .provider__name:hover {
+  border-color: var(--border);
   background: var(--bg);
+}
+
+.provider .provider__name:focus {
+  background: var(--bg);
+}
+
+.provider__remove {
+  flex: none;
+  margin-left: auto;
+  padding: 3px 12px;
+  border-radius: 8px;
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  box-shadow: none;
+  font-size: 13px;
 }
 
 .provider label,
@@ -114,6 +143,35 @@
   background: var(--bg);
 }
 
+/* 原生 spinner 默认只在 hover 时出现，设计稿里是常显的 */
+.provider input[type="number"]::-webkit-inner-spin-button {
+  opacity: 1;
+}
+
+/* 下拉：去掉原生外观，自己画箭头，才能跟旁边的输入框一样高、一样圆角。
+   设置窗口里所有 select 都走这层壳，别只给某一张卡用 */
+.select-field {
+  position: relative;
+  display: flex;
+}
+
+.select-field select {
+  flex: 1;
+  appearance: none;
+  padding-right: 30px;
+}
+
+.select-field__arrow {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  translate: 0 -50%;
+  width: 14px;
+  height: 14px;
+  color: var(--fg-muted);
+  pointer-events: none;
+}
+
 /* label 里的说明文字。对齐到输入框那一列，不然会缩在 90px 的标签列里 */
 .provider__note {
   grid-column: 2;
@@ -125,6 +183,23 @@
 .provider__buttons {
   display: flex;
   gap: 8px;
+}
+
+/* 虚线框 = 「这里还能再加一个」，跟上面实框的服务卡区分开 */
+.add-provider {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-page);
+  box-shadow: none;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.add-provider:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 /* 输入框 + 右侧内嵌按钮（小眼睛） */
@@ -148,6 +223,12 @@
   border-radius: var(--radius-sm);
   background: transparent;
   box-shadow: none;
+  color: var(--fg-muted);
+}
+
+.key-field__eye:hover:not(:disabled) {
+  background: transparent;
+  color: var(--fg);
 }
 
 .status {

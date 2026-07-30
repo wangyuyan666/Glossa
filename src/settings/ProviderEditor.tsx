@@ -7,6 +7,7 @@ import {
   PROTOCOL_DEFAULT_BASE_URL,
   PROTOCOL_LABELS,
 } from "../lib/types";
+import { IconChevronDown, IconEye, IconEyeOff } from "../ui/icons";
 
 interface Props {
   provider: Provider;
@@ -89,27 +90,30 @@ export function ProviderEditor({
           placeholder="名称，如 OpenAI / DeepSeek / 本地 Ollama"
           onChange={(e) => patch({ name: e.target.value })}
         />
-        <button type="button" className="danger" onClick={onRemove}>
+        <button type="button" className="danger provider__remove" onClick={onRemove}>
           删除
         </button>
       </div>
 
       <label>
         协议
-        <select
-          value={provider.protocol}
-          onChange={(e) => changeProtocol(e.target.value as Protocol)}
-        >
-          {Object.entries(PROTOCOL_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+        <span className="select-field">
+          <select
+            value={provider.protocol}
+            onChange={(e) => changeProtocol(e.target.value as Protocol)}
+          >
+            {Object.entries(PROTOCOL_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <IconChevronDown className="select-field__arrow" />
+        </span>
       </label>
 
       <label>
-        base_url
+        API Endpoint
         <input
           value={provider.baseUrl}
           placeholder={PROTOCOL_DEFAULT_BASE_URL[provider.protocol]}
@@ -118,7 +122,7 @@ export function ProviderEditor({
       </label>
 
       <label>
-        api_key
+        API Key
         <span className="key-field">
           <input
             type={revealKey ? "text" : "password"}
@@ -133,7 +137,7 @@ export function ProviderEditor({
             title={revealKey ? "隐藏" : "显示明文"}
             onClick={() => setRevealKey((v) => !v)}
           >
-            {revealKey ? "🙈" : "👁"}
+            {revealKey ? <IconEyeOff /> : <IconEye />}
           </button>
         </span>
       </label>

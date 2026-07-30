@@ -35,6 +35,24 @@ export const IconSearch = svg(
 
 export const IconClose = svg(<path d="M6 6l12 12M18 6L6 18" />);
 
+export const IconChevronDown = svg(<path d="M6 9.5l6 6 6-6" />);
+
+export const IconEye = svg(
+  <>
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </>,
+);
+
+/** 同一只眼睛加一道斜杠：轮廓不变，切换时只多/少一条线，16px 下也认得出。 */
+export const IconEyeOff = svg(
+  <>
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+    <circle cx="12" cy="12" r="3" />
+    <path d="M4.5 4.5l15 15" />
+  </>,
+);
+
 /** 八齿齿轮。轮廓是算出来的多边形，别手改坐标——改一个点整圈就不对称了。 */
 export const IconGear = svg(
   <>
