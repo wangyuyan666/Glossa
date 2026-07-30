@@ -5,7 +5,7 @@ import * as api from "../lib/api";
 interface Props {
   /** 表单里当前的端口，可能还没保存 */
   port: number;
-  /** 已落盘的端口。一键安装和 snippet 都由 Rust 侧按落盘值生成 */
+  /** 已落盘的端口。一键安装由 Rust 侧按落盘值生成 */
   savedPort: number | null;
 }
 
@@ -17,23 +17,17 @@ type Status =
 /**
  * 取词配置。
  *
- * 一键安装生成 `.popclipext` 目录再交给 PopClip；手动安装用 snippet。
- * 手动路径必须保留——一键安装依赖文件关联，Setapp 版、多版本共存、
- * 关联被别的软件抢走都可能让它失效。
+ * 一键安装生成 `.popclipext` 目录再交给 PopClip。
  */
 export function CaptureSection({ port, savedPort }: Props) {
   const [hasPopclip, setHasPopclip] = useState<boolean | null>(null);
-  const [snippet, setSnippet] = useState("");
   const [status, setStatus] = useState<Status>({ kind: "idle" });
-  const [showManual, setShowManual] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const refresh = useCallback(() => {
     void api.popclipInstalled().then(setHasPopclip);
-    void api.popclipSnippet().then(setSnippet);
   }, []);
 
-  // savedPort 变了说明刚保存过，snippet 里的端口要跟着更新。
+  // savedPort 变了说明刚保存过，重新探测一次 PopClip。
   useEffect(refresh, [refresh, savedPort]);
 
   const portDirty = savedPort !== null && savedPort !== port;
@@ -56,12 +50,6 @@ export function CaptureSection({ port, savedPort }: Props) {
     } catch (e) {
       setStatus({ kind: "fail", message: String(e) });
     }
-  };
-
-  const copySnippet = async () => {
-    await navigator.clipboard.writeText(snippet);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
@@ -94,28 +82,6 @@ export function CaptureSection({ port, savedPort }: Props) {
 
       {status.kind !== "idle" && (
         <p className={`status status--${status.kind}`}>{status.message}</p>
-      )}
-
-      <button type="button" onClick={() => setShowManual((v) => !v)}>
-        {showManual ? "收起手动安装" : "手动安装"}
-      </button>
-
-      {showManual && (
-        <>
-          <ol className="muted steps">
-            <li>点「复制片段」</li>
-            <li>粘贴到任意能选中文本的地方（备忘录、文本编辑等）</li>
-            <li>
-              <strong>选中整段</strong>（含开头的 <code>#popclip</code> 一行），PopClip
-              条上会出现 <strong>Install Extension</strong>，点它
-            </li>
-            <li>PopClip 提示这是未签名扩展，确认安装</li>
-          </ol>
-          <pre className="snippet">{snippet}</pre>
-          <button type="button" onClick={() => void copySnippet()}>
-            {copied ? "已复制" : "复制片段"}
-          </button>
-        </>
       )}
     </section>
   );

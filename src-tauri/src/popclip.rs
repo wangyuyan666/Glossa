@@ -1,11 +1,7 @@
 //! PopClip 扩展的生成与安装。
 //!
-//! PopClip 有两种安装形式：
-//!   - **snippet** —— 一段以 `#popclip` 开头的 YAML，用户**选中**它，PopClip 条上出现 Install Extension
-//!   - **package** —— 一个 `.popclipext` 目录，里面放 `Config.yaml`，`open` 它就交给 PopClip 弹安装确认
-//!
-//! 一键安装走 package：我们生成目录再 `open`。snippet 那条路作为兜底保留在设置页里，
-//! 因为一键安装依赖文件关联，Setapp 版、多版本共存、关联被别的软件抢走都可能失效。
+//! 安装走 package 形式：生成一个 `.popclipext` 目录，里面放 `Config.yaml`，
+//! `open` 它就交给 PopClip 弹安装确认。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -49,8 +45,6 @@ pub fn find_popclip() -> Option<PathBuf> {
 
 /// 扩展的 `Config.yaml`。
 ///
-/// package 形式**不需要** `#popclip` 头行，那是 snippet 专用的识别标志。
-///
 /// `identifier` 让 PopClip 认出这是同一个扩展：改端口后重新安装会覆盖原有的，
 /// 而不是在 PopClip 条上多出一个重复图标。
 pub fn config_yaml(port: u16) -> String {
@@ -61,18 +55,6 @@ icon: symbol:character.book.closed
 interpreter: bash
 shell script: curl -s -X POST http://127.0.0.1:{port}/lookup --data-urlencode "q=$POPCLIP_TEXT" -o /dev/null
 "#
-    )
-}
-
-/// snippet 形式，给设置页的「手动安装」用。必须以 `#popclip` 开头。
-pub fn snippet(port: u16) -> String {
-    format!(
-        r#"#popclip
-name: Glossa
-identifier: com.github.glossa
-icon: symbol:character.book.closed
-interpreter: bash
-shell script: curl -s -X POST http://127.0.0.1:{port}/lookup --data-urlencode "q=$POPCLIP_TEXT" -o /dev/null"#
     )
 }
 
@@ -121,26 +103,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn config_yaml_has_no_snippet_header() {
-        // package 里出现 `#popclip` 不会报错，但说明写法搞混了——两种形式的要求正相反。
-        assert!(!config_yaml(8765).contains("#popclip"));
-    }
-
-    #[test]
-    fn snippet_starts_with_the_marker_popclip_looks_for() {
-        assert!(snippet(8765).starts_with("#popclip\n"));
-    }
-
-    #[test]
-    fn both_forms_carry_the_configured_port() {
+    fn config_yaml_carries_the_configured_port() {
         assert!(config_yaml(9001).contains("127.0.0.1:9001/lookup"));
-        assert!(snippet(9001).contains("127.0.0.1:9001/lookup"));
     }
 
     #[test]
-    fn both_forms_share_an_identifier_so_reinstall_overwrites() {
+    fn config_yaml_has_an_identifier_so_reinstall_overwrites() {
         assert!(config_yaml(8765).contains("identifier: com.github.glossa"));
-        assert!(snippet(8765).contains("identifier: com.github.glossa"));
     }
 
     #[test]

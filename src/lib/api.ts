@@ -69,8 +69,6 @@ export const installPopclipExtension = () =>
 
 export const popclipInstalled = () => invoke<boolean>("popclip_installed");
 
-export const popclipSnippet = () => invoke<string>("popclip_snippet");
-
 export const openSettings = () => invoke<void>("open_settings");
 
 export const openMain = () => invoke<void>("open_main");

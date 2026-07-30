@@ -60,7 +60,7 @@ src-tauri/src/
   history.rs      查询历史（SQLite）
   templates.rs    提示词模板：内置正文、变量渲染、静态检查
   prompts.rs      判定单词/句子、拼首轮用户消息
-  popclip.rs      PopClip 扩展的生成与安装（package 一键 / snippet 手动）
+  popclip.rs      PopClip 扩展的生成与安装（package 一键）
   config.rs       Settings 结构与磁盘读写（明文 JSON + 0600）
   server.rs       本地取词监听（axum，只绑 127.0.0.1）
   windows.rs      窗口显示、label 常量、LookupPayload
@@ -229,20 +229,13 @@ turns(id, lookup_id → lookups.id ON DELETE CASCADE, seq, role, content)
 
 落库失败只记日志，不影响用户看到释义。
 
-## PopClip 的两种安装形式
+## PopClip 扩展的安装形式
 
-别搞混，两者的要求正相反：
+只走 package 形式：`.popclipext` 目录 + 里面的 `Config.yaml`，`open` 该目录后 PopClip 弹确认框。注意 package **不要**带 `#popclip` 头行，那是另一种（snippet）形式的识别标志。
 
-| | snippet | package |
-| --- | --- | --- |
-| 形态 | 一段 YAML 文本 | `.popclipext` 目录 + `Config.yaml` |
-| `#popclip` 头行 | **必须有**，是识别标志 | **不要有** |
-| 安装方式 | 用户**选中**整段，PopClip 条上出现 Install Extension | `open` 该目录，PopClip 弹确认框 |
-| 我们用在 | 手动安装（兜底） | 一键安装 |
+`Config.yaml` 带 `identifier: com.github.glossa`，PopClip 据此认出是同一个扩展——改端口后重装会覆盖，而不是多出一个重复图标。
 
-两种形式都带 `identifier: com.github.glossa`，PopClip 据此认出是同一个扩展——改端口后重装会覆盖，而不是多出一个重复图标。
-
-一键安装依赖 macOS 文件关联，Setapp 版、多版本共存、关联被别的软件抢走都可能失效，所以**手动路径必须保留**。`open` 之前先探测 PopClip 是否存在，否则 macOS 会弹「没有可打开此文件的应用」这种让人摸不着头脑的错误。
+`open` 之前先探测 PopClip 是否存在，否则 macOS 会弹「没有可打开此文件的应用」这种让人摸不着头脑的错误。
 
 ## 关键约定
 

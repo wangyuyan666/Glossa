@@ -481,12 +481,6 @@ fn popclip_installed() -> bool {
     popclip::find_popclip().is_some()
 }
 
-/// 手动安装用的 snippet 文本。生成逻辑放在 Rust 侧，和一键安装共用同一份端口与 identifier。
-#[tauri::command]
-fn popclip_snippet(app: AppHandle) -> String {
-    popclip::snippet(config::load(&app).port)
-}
-
 // ---------------------------------------------------------------- 窗口命令
 
 #[tauri::command]
@@ -572,7 +566,6 @@ pub fn run() {
             history_clear,
             install_popclip_extension,
             popclip_installed,
-            popclip_snippet,
             open_settings,
             open_main,
             close_settings,

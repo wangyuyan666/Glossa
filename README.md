@@ -68,25 +68,6 @@ http://127.0.0.1:1234/v1       # LM Studio
 
 安装后：在任意 app 里选中英文 → PopClip 条上点 Glossa 图标 → 主窗口唤起并开始查询。
 
-### 手动安装
-
-一键安装依赖 macOS 的文件关联。Setapp 版 PopClip、多版本共存、关联被别的软件抢走都可能让它失效，这时走手动路径：
-
-设置窗口 → **取词** → **手动安装** → 复制片段 → 粘贴到任意能选中文本的地方 → **选中整段** → PopClip 条上出现 **Install Extension** → 点它。
-
-片段内容（端口跟着设置里的值走）：
-
-```yaml
-#popclip
-name: Glossa
-identifier: com.github.glossa
-icon: symbol:character.book.closed
-interpreter: bash
-shell script: curl -s -X POST http://127.0.0.1:8765/lookup --data-urlencode "q=$POPCLIP_TEXT" -o /dev/null
-```
-
-> 开头的 `#popclip` 是 PopClip 识别 snippet 的标志，少了它整段就只是普通文本。一键安装用的是另一种形式（`.popclipext` 目录 + `Config.yaml`），那种**不需要**这个头行。
-
 ### 没反应的排查
 
 1. Glossa 在跑吗——`curl http://127.0.0.1:8765/ping` 应返回 `Glossa`
