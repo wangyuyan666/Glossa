@@ -3,9 +3,19 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import * as api from "../lib/api";
-import { ExplanationCard } from "./ExplanationCard";
+import { ExplanationCard, modeOf } from "./ExplanationCard";
 import { ThinkingNote } from "./ThinkingNote";
 import type { useLookup } from "./useLookup";
+
+/**
+ * 判定用了哪套提示词是在 Rust 侧做的，前端看不到结果，只能从回来的字段反推。
+ * 告诉用户「它被当成什么处理了」——查一个词却走了句子模板时，这是唯一的线索。
+ */
+const MODE_LABELS = {
+  word: "检测为单词或短语",
+  sentence: "检测为英文句子",
+  translate: "检测为非英文，译成英文",
+} as const;
 
 interface Props {
   lookup: ReturnType<typeof useLookup>;
@@ -34,9 +44,15 @@ export function LookupView({ lookup, idleHint }: Props) {
     <div className="lookup" ref={bodyRef}>
       {phase === "idle" && <p className="lookup__hint">{idleHint}</p>}
 
-      {/* 回显查询原文。划词进来的内容用户不一定记得自己选中了什么，
-          句子模式下尤其需要对照着看。 */}
-      {phase !== "idle" && word && <p className="lookup__query">{word}</p>}
+      {/* 回显查询原文，当这一页的标题。划词进来的内容用户不一定记得自己选中了
+          什么，句子模式下尤其需要对照着看。 */}
+      {phase !== "idle" && word && (
+        <header className="result__head">
+          <h1 className="result__title">{word}</h1>
+          {/* 字段还没到齐时不显示：这时候推断出来的模式可能是错的。 */}
+          {explanation && <span className="badge">{MODE_LABELS[modeOf(explanation)]}</span>}
+        </header>
+      )}
 
       {phase === "error" && (
         <div className="lookup__error">

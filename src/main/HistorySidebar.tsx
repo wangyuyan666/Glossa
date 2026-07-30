@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import * as api from "../lib/api";
 import type { LookupSummary } from "../lib/types";
+import { IconClose, IconSearch, IconTrash } from "../ui/icons";
 
 interface Props {
   items: LookupSummary[];
@@ -27,6 +28,34 @@ function relativeTime(ms: number): string {
   return new Date(ms).toLocaleDateString();
 }
 
+/** 按自然日分组的组名。跨天要靠日历判断，不能拿「距今 24 小时」算今天。 */
+function dayLabel(ms: number): string {
+  const then = new Date(ms);
+  const now = new Date();
+  const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  // 按两边各自的零点相减，才不会因为「今天凌晨」正好等于零点而被算成昨天。
+  const days = Math.round(
+    (midnight(now).getTime() - midnight(then).getTime()) / 86_400_000,
+  );
+
+  if (days <= 0) return "今天";
+  if (days === 1) return "昨天";
+  if (days < 7) return "本周";
+  return then.toLocaleDateString(undefined, { year: "numeric", month: "long" });
+}
+
+/** 列表已按时间倒序，顺着切成连续的日期段即可，不用再排序。 */
+function groupByDay(items: LookupSummary[]): { label: string; items: LookupSummary[] }[] {
+  const groups: { label: string; items: LookupSummary[] }[] = [];
+  for (const item of items) {
+    const label = dayLabel(item.createdAt);
+    const last = groups[groups.length - 1];
+    if (last?.label === label) last.items.push(item);
+    else groups.push({ label, items: [item] });
+  }
+  return groups;
+}
+
 export function HistorySidebar({
   items,
   activeId,
@@ -37,6 +66,7 @@ export function HistorySidebar({
   onClear,
 }: Props) {
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // 离开侧栏或列表变化后撤销待确认状态，免得确认按钮一直挂在那里。
   useEffect(() => {
@@ -45,42 +75,92 @@ export function HistorySidebar({
     return () => clearTimeout(timer);
   }, [confirmingClear]);
 
+  // ⌘K 聚焦搜索框。搜索框上标了这个快捷键，不实现就是骗人。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <aside className="sidebar">
+      <header className="brand">
+        <img className="brand__logo" src="/glossa-logo.png" alt="" />
+        <div className="brand__text">
+          <span className="brand__name">Glossa</span>
+          <span className="brand__tagline">英语学习 · 句子助手</span>
+        </div>
+      </header>
+
       <div className="sidebar__search">
-        <input
-          value={query}
-          placeholder="搜索历史"
-          onChange={(e) => onQueryChange(e.target.value)}
-        />
-      </div>
-
-      <ul className="sidebar__list">
-        {items.length === 0 && (
-          <li className="sidebar__empty">{query ? "没有匹配的记录" : "还没有查询记录"}</li>
-        )}
-
-        {items.map((item) => (
-          <li
-            key={item.id}
-            className={`entry${item.id === activeId ? " entry--active" : ""}`}
-          >
-            <button type="button" className="entry__main" onClick={() => onPick(item.id)}>
-              <span className="entry__word">{item.text}</span>
-              {item.sense && <span className="entry__sense">{item.sense}</span>}
-              <span className="entry__meta">{relativeTime(item.createdAt)}</span>
-            </button>
+        <div className="field">
+          <IconSearch className="field__icon" />
+          <input
+            ref={searchRef}
+            value={query}
+            placeholder="搜索历史记录"
+            onChange={(e) => onQueryChange(e.target.value)}
+          />
+          {query ? (
             <button
               type="button"
-              className="entry__delete"
-              title="删除这条记录"
-              onClick={() => onDelete(item.id)}
+              className="plain"
+              title="清除搜索"
+              onClick={() => onQueryChange("")}
             >
-              ✕
+              <IconClose />
             </button>
-          </li>
+          ) : (
+            <kbd>⌘K</kbd>
+          )}
+        </div>
+      </div>
+
+      <div className="sidebar__list">
+        {items.length === 0 && (
+          <p className="sidebar__empty">{query ? "没有匹配的记录" : "还没有查询记录"}</p>
+        )}
+
+        {groupByDay(items).map((group) => (
+          <section key={group.label}>
+            <h2 className="sidebar__group">{group.label}</h2>
+            <ul className="sidebar__items">
+              {group.items.map((item) => (
+                <li
+                  key={item.id}
+                  className={`entry${item.id === activeId ? " entry--active" : ""}`}
+                >
+                  <button
+                    type="button"
+                    className="entry__main"
+                    onClick={() => onPick(item.id)}
+                  >
+                    <span className="entry__word">{item.text}</span>
+                    <span className="entry__row">
+                      <span className="entry__sense">{item.sense}</span>
+                      <span className="entry__meta">{relativeTime(item.createdAt)}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="entry__delete"
+                    title="删除这条记录"
+                    onClick={() => onDelete(item.id)}
+                  >
+                    <IconClose />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
         ))}
-      </ul>
+      </div>
 
       <div className="sidebar__footer">
         {confirmingClear ? (
@@ -105,7 +185,8 @@ export function HistorySidebar({
             disabled={items.length === 0}
             onClick={() => setConfirmingClear(true)}
           >
-            清空历史
+            <IconTrash />
+            清空历史记录
           </button>
         )}
       </div>

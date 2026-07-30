@@ -1,7 +1,8 @@
 .app {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 268px 1fr;
   height: 100%;
+  background: var(--bg-page);
 }
 
 /* ---- 左侧历史栏 ---- */
@@ -11,69 +12,133 @@
   flex-direction: column;
   min-height: 0;
   border-right: 1px solid var(--border);
-  background: var(--bg-sunken);
+  background: var(--bg-page);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 14px 12px;
+}
+
+.brand__logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  box-shadow: var(--shadow-sm);
+}
+
+.brand__text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.brand__name {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+}
+
+.brand__tagline {
+  color: var(--fg-muted);
+  font-size: 12px;
 }
 
 .sidebar__search {
-  padding: 10px;
-  border-bottom: 1px solid var(--border);
+  padding: 0 12px 10px;
 }
 
-.sidebar__search input {
-  width: 100%;
+.sidebar__search .field {
+  padding: 0 8px 0 10px;
 }
 
 .sidebar__list {
   flex: 1;
   overflow-y: auto;
-  margin: 0;
-  padding: 4px;
-  list-style: none;
+  padding: 0 8px 8px;
 }
 
 .sidebar__empty {
-  padding: 16px 10px;
+  padding: 20px 10px;
   color: var(--fg-muted);
   font-size: 13px;
   text-align: center;
 }
 
+/* 日期分组的小标题。粘在滚动区顶部，长列表里也知道自己在看哪一天 */
+.sidebar__group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 8px 6px 4px;
+  background: var(--bg-page);
+  color: var(--fg-faint);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sidebar__items {
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+}
+
 .entry {
-  display: flex;
-  align-items: stretch;
-  border-radius: 6px;
+  position: relative;
+  border-radius: var(--radius);
 }
 
 .entry:hover {
-  background: var(--bg);
+  background: var(--bg-hover);
 }
 
 .entry--active {
-  background: var(--bg);
-  outline: 1px solid var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .entry__main {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 7px 9px;
+  gap: 2px;
+  padding: 8px 10px;
   border: none;
+  border-radius: var(--radius);
   background: transparent;
+  box-shadow: none;
+  font-weight: 400;
   text-align: left;
 }
 
+.entry__main:hover:not(:disabled) {
+  background: transparent;
+  border-color: transparent;
+}
+
 .entry__word {
+  align-self: stretch;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 13.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.entry__row {
+  align-self: stretch;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
 .entry__sense {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
   color: var(--fg-muted);
   white-space: nowrap;
@@ -82,31 +147,41 @@
 }
 
 .entry__meta {
+  flex: none;
   font-size: 11px;
-  color: var(--fg-muted);
+  color: var(--fg-faint);
 }
 
-/* 删除按钮平时不占视觉重量，悬停整条才出现 */
+/* 删除按钮平时不占视觉重量，悬停整条才出现；绝对定位免得挤动文字 */
 .entry__delete {
-  padding: 0 8px;
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  padding: 3px;
   border: none;
-  background: transparent;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
   color: var(--fg-muted);
   opacity: 0;
 }
 
-.entry:hover .entry__delete {
+.entry:hover .entry__delete,
+.entry__delete:focus-visible {
   opacity: 1;
 }
 
-.entry__delete:hover {
+.entry__delete:hover:not(:disabled) {
   color: var(--danger);
+  background: var(--danger-soft);
+  border-color: transparent;
 }
 
 .sidebar__footer {
   display: flex;
-  gap: 6px;
-  padding: 10px;
+  gap: 8px;
+  padding: 10px 12px 14px;
   border-top: 1px solid var(--border);
 }
 
@@ -122,26 +197,64 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  padding: 14px 16px 14px 14px;
+  gap: 12px;
+  background: var(--bg-page);
 }
 
 .workspace__query {
   display: flex;
-  gap: 8px;
-  padding: 12px;
-  border-bottom: 1px solid var(--border);
+  gap: 10px;
+  flex: none;
 }
 
-.workspace__query input {
+.workspace__query .field {
   flex: 1;
+  padding: 0 8px 0 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.workspace__query .field input {
+  padding: 10px 0;
+  font-size: 14.5px;
+}
+
+.workspace__query button {
+  padding: 0 16px;
+}
+
+.workspace__query .primary kbd {
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.workspace__result {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 查询框 + 结果区 + 追问框共用的白底容器 */
+.surface {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
 }
 
 .banner {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  background: var(--bg-sunken);
-  border-bottom: 1px solid var(--border);
+  flex: none;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--warn-soft);
+  color: var(--warn);
   font-size: 13px;
 }
 

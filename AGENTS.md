@@ -89,7 +89,12 @@ src/
     CaptureSection  取词那一节
     PromptSection   提示词模板的选用与管理
     TemplateEditor  单个模板的编辑 + 静态检查 + 实测
+  ui/
+    icons.tsx     内联 SVG 图标，两个窗口共用
 ```
+
+两个窗口共用一份构建产物，CSS 也是同一份：`settings.css` 里的类名带 `settings-`
+前缀就是为此，不带前缀的通用类会和主窗口串。
 
 ## 提示词模板
 

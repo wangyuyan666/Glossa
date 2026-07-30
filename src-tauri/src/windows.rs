@@ -36,6 +36,16 @@ pub fn show_main(app: &AppHandle) -> Result<()> {
     show(app, MAIN_LABEL)
 }
 
+/// 收起设置窗口。窗口常驻不销毁，所以是 hide 而不是 close——和点关闭按钮
+/// （`lib.rs` 里的 CloseRequested 处理）走的是同一条路。
+pub fn hide_settings(app: &AppHandle) -> Result<()> {
+    let window = app
+        .get_webview_window(SETTINGS_LABEL)
+        .context("找不到 settings 窗口")?;
+    window.hide()?;
+    Ok(())
+}
+
 /// 唤出主窗口并把查询送过去。取词层（`server.rs`）的落点。
 ///
 /// 这里不能只调 `show_main`：查询是 PopClip 发起的，那一刻前台 app 是别人，

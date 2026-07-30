@@ -6,6 +6,7 @@ import type { LookupPayload } from "../lib/types";
 import { AskBox } from "../lookup/AskBox";
 import { LookupView } from "../lookup/LookupView";
 import { useLookup } from "../lookup/useLookup";
+import { IconClose, IconGear, IconSearch } from "../ui/icons";
 import { HistorySidebar, useHistory } from "./HistorySidebar";
 import "../lookup/lookup.css";
 import "./main.css";
@@ -96,27 +97,44 @@ export function Main() {
         )}
 
         <div className="workspace__query">
-          <input
-            value={input}
-            placeholder="输入单词、短语或整句，回车查询"
-            autoFocus
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) submit();
-            }}
-          />
-          <button type="button" onClick={submit} disabled={!input.trim()}>
+          <div className="field">
+            <IconSearch className="field__icon" />
+            <input
+              value={input}
+              placeholder="输入单词、短语或整句，回车查询"
+              autoFocus
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) submit();
+              }}
+            />
+            {input && (
+              <button
+                type="button"
+                className="plain"
+                title="清空输入"
+                onClick={() => setInput("")}
+              >
+                <IconClose />
+              </button>
+            )}
+          </div>
+          <button type="button" className="primary" onClick={submit} disabled={!input.trim()}>
             查询
+            <kbd>⏎</kbd>
           </button>
-          <button type="button" title="设置" onClick={() => void api.openSettings()}>
-            ⚙
+          <button type="button" onClick={() => void api.openSettings()}>
+            <IconGear />
+            设置
           </button>
         </div>
 
-        <LookupView
-          lookup={lookup}
-          idleHint="在上方输入要查的词，或在任意 app 里划词用 PopClip 触发。查过的词会出现在左侧。"
-        />
+        <div className="surface workspace__result">
+          <LookupView
+            lookup={lookup}
+            idleHint="在上方输入要查的词，或在任意 app 里划词用 PopClip 触发。查过的词会出现在左侧。"
+          />
+        </div>
 
         <AskBox phase={lookup.phase} answering={lookup.answering} onAsk={lookup.ask} />
       </main>

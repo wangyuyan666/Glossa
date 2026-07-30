@@ -65,7 +65,7 @@ export function CaptureSection({ port, savedPort }: Props) {
   };
 
   return (
-    <section>
+    <section className="settings-card">
       <h2>取词</h2>
       <p className="muted">
         阶段一的取词由 PopClip 完成：在任意 app 里选中英文，点 PopClip 条上的 Glossa

@@ -3,10 +3,10 @@
 .lookup {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 18px 20px 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .lookup__hint {
@@ -15,15 +15,21 @@
   margin: 0;
 }
 
-/* 查询原文。用引用式的样式和下方释义区分开——这是"你问的"，不是"答案"。 */
-.lookup__query {
+/* 查询原文。它是这一页的标题——划词进来的内容用户不一定记得自己选中了什么 */
+.result__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.result__title {
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  padding: 6px 10px;
-  border-left: 2px solid var(--border);
-  color: var(--fg-muted);
-  font-size: 13px;
-  line-height: 1.5;
-  white-space: pre-wrap;
+  font-size: 21px;
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: 0.1px;
   word-break: break-word;
 }
 
@@ -38,7 +44,7 @@
 .card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .card--raw {
@@ -48,9 +54,59 @@
   color: var(--fg-muted);
 }
 
+/**
+ * 释义的每一块都是一张带色标的卡：纠错、译文、语法、关键词的性质不同，
+ * 平铺成一串段落时用户得自己分辨，上色标之后扫一眼就知道哪块是什么。
+ * 颜色由 --tone / --tone-soft 两个变量驱动，修饰类只改这两个值。
+ */
+.panel {
+  --tone: var(--border-strong);
+  --tone-soft: var(--bg);
+  margin: 0;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--tone);
+  border-radius: var(--radius);
+  background: var(--tone-soft);
+}
+
+.panel--danger {
+  --tone: var(--danger);
+  --tone-soft: var(--danger-soft);
+}
+
+.panel--ok {
+  --tone: var(--ok);
+  --tone-soft: var(--ok-soft);
+}
+
+.panel--accent {
+  --tone: var(--accent);
+  --tone-soft: var(--bg);
+}
+
+/* 无色标的那块：标题跟着灰色走，别用几乎看不见的边框色 */
+.panel--plain .panel__head {
+  color: var(--fg-muted);
+}
+
+.panel__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 7px;
+  color: var(--tone);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.panel > :last-child {
+  margin-bottom: 0;
+}
+
 .card__meta {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   margin: 0;
   color: var(--fg-muted);
   font-size: 13px;
@@ -67,68 +123,130 @@
 }
 
 .card__why {
-  margin: 0;
+  margin: 6px 0 0;
   color: var(--fg-muted);
+  font-size: 13px;
 }
 
 .card__collocations {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 0;
+  margin: 10px 0 0;
   padding: 0;
   list-style: none;
 }
 
 .card__collocations li {
-  padding: 1px 8px;
+  padding: 1px 9px;
   border: 1px solid var(--border);
   border-radius: 999px;
+  background: var(--bg);
   font-size: 12px;
-}
-
-/* 句子模式的语法纠错。排在译文之前，用 danger 边框跟正文讲解区分开 */
-.card__grammar {
-  padding: 6px 10px;
-  border-left: 2px solid var(--danger);
-  background: var(--bg-sunken);
-  border-radius: 0 6px 6px 0;
 }
 
 .card__grammar-issue {
   margin: 0;
-  color: var(--danger);
-  font-size: 13px;
-}
-
-.card__grammar-fix {
-  margin: 3px 0 0;
-  font-size: 13px;
-}
-
-/* 句子模式的难点列表 */
-.card__points {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-}
-
-.card__point dt {
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.card__point dd {
-  margin: 1px 0 0;
   color: var(--fg-muted);
   font-size: 13px;
+}
+
+/* 改正后的句子是这一块的答案，比问题描述重 */
+.card__grammar-fix {
+  margin: 6px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+/* 语法解析：术语在左、说明在右，一行一条 */
+.rows {
+  display: flex;
+  flex-direction: column;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.rows li {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rows li:last-child {
+  border-bottom: none;
+}
+
+.rows__term {
+  flex: none;
+  width: 152px;
+  padding: 1px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.rows__note {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+/* 关键词解析：并排的小卡，方便横向对照几个词 */
+.keygrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 8px 0 0;
+}
+
+.keycard {
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* 四种底色轮换，只为把相邻的卡分开，没有语义 */
+.keycard:nth-child(4n + 1) {
+  background: var(--accent-soft);
+}
+.keycard:nth-child(4n + 2) {
+  background: var(--tint-purple);
+}
+.keycard:nth-child(4n + 3) {
+  background: var(--tint-amber);
+}
+.keycard:nth-child(4n) {
+  background: var(--ok-soft);
+}
+
+.keycard__term {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.keycard__note {
+  margin: 4px 0 0;
+  color: var(--fg-muted);
+  font-size: 12.5px;
 }
 
 /* 译文。翻译模式下它就是答案，比释义的 sense 再重一点 */
 .card__english {
   margin: 0;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 600;
   line-height: 1.5;
   word-break: break-word;
@@ -138,17 +256,17 @@
 .card__alternatives {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin: 0;
+  gap: 8px;
+  margin: 8px 0 0;
   padding: 0;
   list-style: none;
 }
 
 .card__alternatives li {
-  padding: 6px 10px;
-  border-left: 2px solid var(--border);
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   background: var(--bg-sunken);
-  border-radius: 0 6px 6px 0;
 }
 
 .card__alt-text {
@@ -159,22 +277,16 @@
 .card__alt-when {
   margin: 2px 0 0;
   color: var(--fg-muted);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
-.card__example {
+.card__example-en {
   margin: 0;
-  padding: 6px 10px;
-  border-left: 2px solid var(--accent);
-  background: var(--bg-sunken);
-  border-radius: 0 6px 6px 0;
-}
-
-.card__example p {
-  margin: 0;
+  font-size: 14px;
 }
 
 .card__example-zh {
+  margin: 3px 0 0;
   color: var(--fg-muted);
   font-size: 13px;
 }
@@ -229,10 +341,10 @@
 .thinking__text {
   max-height: 96px;
   overflow-y: auto;
-  padding: 6px 10px;
-  border-left: 2px solid var(--border);
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   background: var(--bg-sunken);
-  border-radius: 0 6px 6px 0;
   color: var(--fg-muted);
   font-size: 12px;
   line-height: 1.6;
@@ -249,8 +361,8 @@
 .turn--user {
   align-self: flex-end;
   max-width: 85%;
-  padding: 6px 10px;
-  border-radius: 10px;
+  padding: 7px 12px;
+  border-radius: 14px 14px 4px 14px;
   background: var(--accent);
   color: #fff;
 }
@@ -280,13 +392,48 @@
 /* ---- 追问输入框 ---- */
 
 .askbox {
+  flex: none;
   display: flex;
-  gap: 8px;
-  padding: 10px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-sunken);
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
 }
 
-.askbox input {
+/* 发送键在输入框外侧、始终垂直居中：框会随内容长高，按钮跟着长或贴边都不好看 */
+.askbox__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.askbox__field {
   flex: 1;
+  min-width: 0;
+  padding: 0 12px;
+  border-radius: var(--radius);
+}
+
+.askbox__field textarea {
+  padding: 8px 0;
+  max-height: 120px;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+}
+
+.askbox__send {
+  flex: none;
+  height: 36px;
+  padding: 0 16px;
+}
+
+.askbox__hint {
+  margin: 0;
+  padding-left: 2px;
+  color: var(--fg-faint);
+  font-size: 12px;
 }

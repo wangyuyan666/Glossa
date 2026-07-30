@@ -499,6 +499,11 @@ fn open_main(app: AppHandle) -> Result<(), String> {
     windows::show_main(&app).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn close_settings(app: AppHandle) -> Result<(), String> {
+    windows::hide_settings(&app).map_err(|e| e.to_string())
+}
+
 // ---------------------------------------------------------------- 入口
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -570,6 +575,7 @@ pub fn run() {
             popclip_snippet,
             open_settings,
             open_main,
+            close_settings,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

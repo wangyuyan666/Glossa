@@ -77,7 +77,7 @@ export function PromptSection({ settings, onPatch }: Props) {
   };
 
   return (
-    <section>
+    <section className="settings-card">
       <h2>提示词</h2>
       <p className="muted">
         按选中的内容自动选用：不是英文走「译成英文」，长句走句子，其余走单词。

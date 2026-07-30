@@ -74,3 +74,5 @@ export const popclipSnippet = () => invoke<string>("popclip_snippet");
 export const openSettings = () => invoke<void>("open_settings");
 
 export const openMain = () => invoke<void>("open_main");
+
+export const closeSettings = () => invoke<void>("close_settings");

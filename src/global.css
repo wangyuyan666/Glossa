@@ -1,12 +1,35 @@
 :root {
+  /* 面：page 是窗口底色，surface 是卡片，sunken 是嵌在卡片里的输入区 */
   --bg: #ffffff;
+  --bg-page: #f6f7f9;
   --bg-sunken: #f4f5f7;
-  --fg: #1b1c1e;
-  --fg-muted: #6b7076;
-  --border: #e2e4e8;
-  --accent: #3b6ef5;
-  --danger: #c8372d;
-  --ok: #1f7a4d;
+  --bg-hover: #eef0f4;
+
+  --fg: #16181d;
+  --fg-muted: #6b7280;
+  --fg-faint: #9aa0aa;
+
+  --border: #e5e7eb;
+  --border-strong: #d5d8de;
+
+  --accent: #4b60e8;
+  --accent-hover: #3f52d3;
+  --accent-soft: #eef1fe;
+  --danger: #d63c31;
+  --danger-soft: #fdefee;
+  --ok: #1f8a54;
+  --ok-soft: #edf8f2;
+  --warn: #b25e09;
+  --warn-soft: #fdf4e7;
+  --tint-amber: #f6efe0;
+  --tint-purple: #f1eefc;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow: 0 6px 20px rgba(16, 24, 40, 0.07);
 
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC",
     "Microsoft YaHei", sans-serif;
@@ -14,18 +37,37 @@
   line-height: 1.6;
   color: var(--fg);
   background: var(--bg);
+  -webkit-font-smoothing: antialiased;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1c1d20;
-    --bg-sunken: #26282c;
-    --fg: #e8e9eb;
-    --fg-muted: #9aa0a6;
-    --border: #34373c;
-    --accent: #6f95ff;
+    --bg: #1f2126;
+    --bg-page: #16171a;
+    --bg-sunken: #272a30;
+    --bg-hover: #2e3138;
+
+    --fg: #e9eaee;
+    --fg-muted: #9aa0aa;
+    --fg-faint: #7c828d;
+
+    --border: #33363d;
+    --border-strong: #43474f;
+
+    --accent: #7d8dff;
+    --accent-hover: #93a1ff;
+    --accent-soft: #23273a;
     --danger: #f0776b;
+    --danger-soft: #33262a;
     --ok: #5cc98e;
+    --ok-soft: #1e2f2a;
+    --warn: #e0a558;
+    --warn-soft: #322a1f;
+    --tint-amber: #302a20;
+    --tint-purple: #292739;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -41,28 +83,47 @@ body,
 }
 
 body {
-  background: var(--bg);
+  background: var(--bg-page);
   color: var(--fg);
   overflow: hidden;
 }
 
+/* ---- 图标 ---- */
+
+.icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* ---- 按钮 ---- */
+
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   font: inherit;
+  font-weight: 500;
   color: inherit;
-  padding: 5px 12px;
+  padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 
 button:hover:not(:disabled) {
-  border-color: var(--accent);
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
 }
 
 button:disabled {
   opacity: 0.45;
   cursor: default;
+  box-shadow: none;
 }
 
 button.primary {
@@ -71,25 +132,107 @@ button.primary {
   color: #fff;
 }
 
-button.danger {
-  color: var(--danger);
+button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
+button.danger {
+  color: var(--danger);
+  border-color: var(--border-strong);
+  background: var(--bg);
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+/* 只有图标、不占视觉重量的按钮 */
+button.plain {
+  padding: 4px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--fg-muted);
+}
+
+button.plain:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: transparent;
+  color: var(--fg);
+}
+
+/* ---- 输入 ---- */
+
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: inherit;
-  padding: 5px 8px;
+  padding: 6px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   min-width: 0;
 }
 
+input::placeholder,
+textarea::placeholder {
+  color: var(--fg-faint);
+}
+
 input:focus,
-select:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* 带前置图标 / 后置按钮的输入框外壳 */
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.field__icon {
+  color: var(--fg-faint);
+}
+
+.field input,
+.field textarea {
+  flex: 1;
+  padding: 7px 0;
+  border: none;
+  background: transparent;
+}
+
+.field input:focus,
+.field textarea:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+kbd {
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-sunken);
 }
 
 code {
@@ -103,4 +246,27 @@ code {
 .muted {
   color: var(--fg-muted);
   font-size: 13px;
+}
+
+/* 状态点 + 文字的胶囊标签 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
 }
