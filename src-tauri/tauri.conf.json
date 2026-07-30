@@ -22,7 +22,8 @@
         "resizable": true,
         "decorations": true,
         "visible": false,
-        "center": true
+        "center": true,
+        "acceptFirstMouse": true
       },
       {
         "label": "settings",
@@ -35,7 +36,8 @@
         "resizable": true,
         "decorations": true,
         "visible": false,
-        "center": true
+        "center": true,
+        "acceptFirstMouse": true
       }
     ],
     "security": {

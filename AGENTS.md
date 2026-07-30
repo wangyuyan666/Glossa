@@ -140,6 +140,10 @@ src/
 
 窗口都是启动时建好、平时隐藏，关闭按钮只 `hide()` 不销毁（`lib.rs` 的 `on_window_event`），避免下次用到要重建 webview。因此 `RunEvent::Reopen` 必须处理——不然主窗口关掉后点 Dock 图标就再也打不开了。
 
+两个窗口都配了 **`acceptFirstMouse: true`**，别删。NSWindow 默认 `acceptsFirstMouse: NO`：app 不在前台时，落到窗口上的第一次点击被系统吃掉、只用来激活 app，**不派发给 WKWebView**，React 的 onClick 根本不触发。症状是启动后（窗口显示了但 app 未必是活动 app）任何控件第一下都没反应、点第二下才行，最容易被误认成设置按钮的 bug——实际上和按钮无关，而且很难往窗口配置上想。代价是激活那一下的点击也会生效（手正好落在「清空历史」上就真清了），对划词工具这笔账划算。
+
+复现要用真实的 `CGEventPost` 点击：AppleScript 的 `click at` 走 AX，绕过这个行为，测不出来。
+
 划词的载荷经 `windows::present()` 送到主窗口。冷启动时事件可能早于 React 挂载，所以 `state.rs` 里留了一份暂存，`Main` 挂载时主动 `takePendingLookup()` 兜一次。
 
 流式事件用 `app.emit()` **广播**，前端按 `streamId` 分发。
