@@ -20,6 +20,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+# 本地 HTTP 端口和常驻窗口都要求单实例；否则第二个 dev 进程端口失败但窗口仍会打开，
+# 两套一模一样的窗口会让行为与日志对不上。
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -38,3 +41,8 @@ uuid = { version = "1", features = ["v4"] }
 urlencoding = "2"
 # 0.40 的 libsqlite3-sys 用了 cfg_select!，要求 Rust 1.91+。锁在能用 1.89 编的版本。
 rusqlite = { version = "0.32", features = ["bundled"] }
+
+# 只为 first_mouse.rs：绕过 WKWebView 吞掉首次点击的上游 bug，见该模块的注释。
+# 版本跟 tao/wry 已经在用的对齐，别让依赖树里出现两个 objc2。
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"

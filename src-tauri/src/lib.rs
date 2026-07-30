@@ -1,4 +1,5 @@
 mod config;
+mod first_mouse;
 mod history;
 mod llm;
 mod popclip;
@@ -45,11 +46,22 @@ const EMPTY_STREAM_MESSAGE: &str =
     rename_all_fields = "camelCase"
 )]
 enum StreamEvent {
-    Delta { stream_id: String, text: String },
+    Delta {
+        stream_id: String,
+        text: String,
+    },
     /// 推理模型的思考增量。前端拿它显示「思考中…」，不参与 JSON 解析。
-    Reasoning { stream_id: String, text: String },
-    Done { stream_id: String },
-    Error { stream_id: String, message: String },
+    Reasoning {
+        stream_id: String,
+        text: String,
+    },
+    Done {
+        stream_id: String,
+    },
+    Error {
+        stream_id: String,
+        message: String,
+    },
 }
 
 // ---------------------------------------------------------------- 配置命令
@@ -492,6 +504,12 @@ fn open_main(app: AppHandle) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 必须在最前面注册：第二次启动不再创建另一套窗口，只唤回已有主窗口。
+        // 本 app 还占固定本地端口；没有单实例时，第二进程端口失败但窗口照开，
+        // 两套一模一样的窗口会让点击行为和终端日志完全对不上。
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let _ = windows::show_main(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .setup(|app| {
@@ -500,6 +518,14 @@ pub fn run() {
 
             app.manage(history::History::open(&handle)?);
             server::spawn(handle.clone(), settings.port);
+
+            // setup 在 AppKit 主线程执行。必须在任何窗口 show 之前同步补：先显示再异步排队，
+            // 用户点得快就能赶在补丁前，第一次点击仍会被系统吞掉。
+            for label in [MAIN_LABEL, SETTINGS_LABEL] {
+                if let Some(window) = app.get_webview_window(label) {
+                    first_mouse::allow_now(&window);
+                }
+            }
 
             // 主窗口是应用的门面，启动就打开。没配模型时它自己会挂提示条引导去设置，
             // 比一上来甩个设置页更符合预期。

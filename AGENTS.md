@@ -64,6 +64,7 @@ src-tauri/src/
   config.rs       Settings 结构与磁盘读写（明文 JSON + 0600）
   server.rs       本地取词监听（axum，只绑 127.0.0.1）
   windows.rs      窗口显示、label 常量、LookupPayload
+  first_mouse.rs  绕过 WKWebView 吞掉首次点击的上游 bug（objc runtime，macOS only）
   state.rs        跨命令共享状态（暂存查询、当前流的句柄）
   llm/
     mod.rs        LlmProvider trait、协议分派、端点拼接
@@ -140,9 +141,26 @@ src/
 
 窗口都是启动时建好、平时隐藏，关闭按钮只 `hide()` 不销毁（`lib.rs` 的 `on_window_event`），避免下次用到要重建 webview。因此 `RunEvent::Reopen` 必须处理——不然主窗口关掉后点 Dock 图标就再也打不开了。
 
-两个窗口都配了 **`acceptFirstMouse: true`**，别删。NSWindow 默认 `acceptsFirstMouse: NO`：app 不在前台时，落到窗口上的第一次点击被系统吃掉、只用来激活 app，**不派发给 WKWebView**，React 的 onClick 根本不触发。症状是启动后（窗口显示了但 app 未必是活动 app）任何控件第一下都没反应、点第二下才行，最容易被误认成设置按钮的 bug——实际上和按钮无关，而且很难往窗口配置上想。代价是激活那一下的点击也会生效（手正好落在「清空历史」上就真清了），对划词工具这笔账划算。
+应用必须保持**单实例**，`tauri-plugin-single-instance` 要放在 plugin 列表最前面。这里不只是一般的桌面应用习惯：本 app 占固定 127.0.0.1 端口。没有单实例时，第二个 `tauri dev` 进程会出现「端口绑定失败但窗口照开」的半残状态，两套一模一样的窗口并存，点到哪套和终端日志完全对不上。第二次启动现在只唤回已有主窗口。
 
-复现要用真实的 `CGEventPost` 点击：AppleScript 的 `click at` 走 AX，绕过这个行为，测不出来。
+### 首次点击
+
+NSWindow 默认 `acceptsFirstMouse: NO`：app 不在前台时，落到窗口上的第一次点击被系统吃掉、只用来激活 app，**不派发给 WKWebView**，React 的 onClick 根本不触发。症状是任何控件第一下都没反应、点第二下才行，最容易被误认成设置按钮的 bug——实际上和按钮无关，而且很难往窗口配置上想。
+
+**`tauri.conf.json` 里的 `acceptFirstMouse: true` 治不了这个。** 别以为配上就完事了（这个仓库犯过一次，还把结论写进了文档）：
+
+- tao 给窗口 content view 覆写了 `acceptsFirstMouse:` 恒返回 YES；
+- wry 给 `WryWebView`（WKWebView 的子类）也覆写了，按配置返回其内部 ivar；
+- 实测 AppKit 问的就是 `WryWebView`，但单靠配置时它仍吞第一次点击。这是上游已有的「按窗口怎么显示，行为时好时坏」问题，不是 React 事件问题。
+
+上游还开着：[wry#637](https://github.com/tauri-apps/wry/issues/637)、[tauri#6781](https://github.com/tauri-apps/tauri/issues/6781)、[tauri#4316](https://github.com/tauri-apps/tauri/issues/4316)，wry 0.56 也没修。
+
+真正干活的是 `first_mouse.rs`：遍历 webview 的 NSView 子树，按公开类关系找到 `WKWebView` 实例，用 objc runtime 把它所属的 `WryWebView` 类的 `acceptsFirstMouse:` 换成恒 YES。启动时在 `setup` 主线程里对两个窗口**同步补完再 show**——顺序不能反：先显示再用 `run_on_main_thread` 异步排队，用户点得快就能赶在补丁前，第一次仍被吞。后续每次 `show()` / `present()` 再做防御性重补；类方法替换幂等。
+
+- 不依赖 WebKit 私有子视图名；若 macOS / wry 改了宿主层级就**静默失效**、退回点两下的老行为，不会崩。配置里的 `acceptFirstMouse` 保留着，上游修好后两边指向同一行为。
+- 代价是激活那一下的点击会真生效（手正好落在「清空历史」上就真清了），对划词工具这笔账划算。
+
+**验证只能用真实的 `CGEventPost` 点击**，AppleScript 的 `click at` 走 AX、绕过整个 first-mouse 行为，测不出来。而 `CGEventPost` 要求**发事件的进程**（终端 / IDE）有辅助功能权限，没授权的话事件被系统静默丢弃、看起来像「修了没用」——先点一下标题栏自检工具是否真在发事件。没权限就退回手点，同时用 `CGWindowListCopyWindowInfo` 拉窗口栈看设置窗口（780x620）是在第几次点击后出现的，这比肉眼判断可靠。
 
 划词的载荷经 `windows::present()` 送到主窗口。冷启动时事件可能早于 React 挂载，所以 `state.rs` 里留了一份暂存，`Main` 挂载时主动 `takePendingLookup()` 兜一次。
 

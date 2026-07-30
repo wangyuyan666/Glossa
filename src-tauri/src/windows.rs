@@ -24,6 +24,7 @@ pub fn show(app: &AppHandle, label: &str) -> Result<()> {
     window.show()?;
     window.unminimize().ok();
     window.set_focus()?;
+    crate::first_mouse::allow(&window);
     Ok(())
 }
 
@@ -53,6 +54,7 @@ pub fn present(app: &AppHandle, payload: &LookupPayload) -> Result<()> {
     window.unminimize().ok();
     window.set_focus()?;
     window.set_always_on_top(false)?;
+    crate::first_mouse::allow(&window);
 
     app.emit_to(MAIN_LABEL, "lookup", payload.clone())?;
     Ok(())
