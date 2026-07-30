@@ -121,10 +121,15 @@ src/
 
 | | 单词 / 短语 | 句子 |
 | --- | --- | --- |
-| 字段 | `word` `phonetic` `pos` `senseHere` `why` `collocations[]` `example` | `translation` `structure` `keyPoints[{term,note}]` |
+| 字段 | `grammar{issue,corrected}` `word` `phonetic` `pos` `senseHere` `why` `collocations[]` `example` | `grammar{issue,corrected}` `translation` `structure` `keyPoints[{term,note}]` |
 | 上下文 | 用 `context` 定位此处义项 | 不用——句子本身就是自己的上下文 |
 
 **别把两套字段合成一套。** 句子走单词 schema 时，`word`（词条原形）/`phonetic`/`pos` 会逼着模型从句子里挑一个词来填，症状就是「选了一整句却只翻译其中一个单词」。这是本项目实际踩过的 bug。
+
+`grammar` 是选中内容的拼写 / 语法纠错，排在两套 schema 的最前，没毛病时两个子字段都是空串、卡片不渲染这一块。
+
+- **两套都有**，因为 `is_sentence` 挡不住短错句：`how's is goging today` 才 4 个词又没句末标点，判成词组走单词模板，只加在句子模板上等于没加。也正因为两套都有，**它不能用来判断是词还是句**，`ExplanationCard` 分流只看 `translation`/`structure`/`keyPoints`。
+- **不在** `required_fields` 里：加进去会让用户已有的自建模板立刻变 error，实测探针也会在「样例本来就没语法错」时误判模型漏了字段。
 
 前端 `ExplanationCard` 按字段存在性分流，不需要额外的模式标记——`parsePartialJson` 返回的本来就是部分对象，流式渲染天然继续工作。
 

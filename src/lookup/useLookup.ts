@@ -15,6 +15,12 @@ export type Phase = "idle" | "explaining" | "ready" | "error";
 function explanationAsText(exp: Partial<Explanation>, fallback: string): string {
   const lines: string[] = [];
 
+  // 纠错两套都有，放最前面——追问时用户往往就是接着问「为什么这里错了」。
+  if (exp.grammar?.issue) {
+    const fix = exp.grammar.corrected ? `\n改正：${exp.grammar.corrected}` : "";
+    lines.push(`语法问题：${exp.grammar.issue}${fix}`);
+  }
+
   if (exp.word) lines.push(`${exp.word} ${exp.phonetic ?? ""} ${exp.pos ?? ""}`.trim());
   if (exp.senseHere) lines.push(exp.senseHere);
   if (exp.why) lines.push(exp.why);

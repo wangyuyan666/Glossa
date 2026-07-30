@@ -112,6 +112,12 @@ export interface LookupPayload {
  * `is_sentence`）。卡片按字段存在性渲染，不需要额外的模式标记。
  */
 export interface Explanation {
+  /**
+   * 选中内容本身的拼写 / 语法纠错。两套 schema 都有，所以不能拿它区分词和句。
+   * 没有问题时两项都是空串，卡片不渲染这一块。
+   */
+  grammar: { issue: string; corrected: string };
+
   // ---- 单词 / 短语 ----
   word: string;
   phonetic: string;

@@ -87,6 +87,25 @@
   font-size: 12px;
 }
 
+/* 句子模式的语法纠错。排在译文之前，用 danger 边框跟正文讲解区分开 */
+.card__grammar {
+  padding: 6px 10px;
+  border-left: 2px solid var(--danger);
+  background: var(--bg-sunken);
+  border-radius: 0 6px 6px 0;
+}
+
+.card__grammar-issue {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.card__grammar-fix {
+  margin: 3px 0 0;
+  font-size: 13px;
+}
+
 /* 句子模式的难点列表 */
 .card__points {
   display: flex;

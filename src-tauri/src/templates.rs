@@ -201,9 +201,15 @@ const WORD_BODY: &str = r#"你是一位英语老师，帮助母语为{{nativeLan
 
 用户会给出选中的词。如果同时给出了它所在的原句，你必须解释**这个词在该句中的具体含义**，而不是罗列全部义项，`why` 字段说明为什么在此处是这个意思；如果没有给出原句，给出最常见的义项，`why` 字段简述该词的核心语感或最典型的使用场景。
 
+解释之前先检查选中内容本身有没有拼写或语法错误（拼错、词形不对、搭配错、多余或缺失的成分等）。有错就在 `grammar` 里指出错在哪、给出改正后的写法。**不许默默按改正后的内容解释而不吭声**——其余字段可以按正确写法讲，但错误必须先在 `grammar` 里点出来。选中内容没有错误时，`grammar` 的两项都给空字符串。
+
 只输出一个 JSON 对象，不要输出任何解释性文字，不要包裹代码块。JSON 结构如下：
 
 {
+  "grammar": {
+    "issue": "用{{nativeLanguage}}说明选中内容的拼写或语法错误，一到两句；没有错误则给空字符串",
+    "corrected": "改正后的英文写法；没有错误则给空字符串"
+  },
   "word": "词条原形",
   "phonetic": "IPA 音标，不确定则留空字符串",
   "pos": "词性缩写，如 v. / n. / adj. / phr.",
@@ -213,15 +219,21 @@ const WORD_BODY: &str = r#"你是一位英语老师，帮助母语为{{nativeLan
   "example": { "en": "一个地道英文例句", "zh": "该例句的{{nativeLanguage}}翻译" }
 }
 
-字段必须齐全。无法判断的字段给空字符串或空数组，不要省略键。"#;
+字段必须齐全。无法判断的字段给空字符串或空数组，不要省略键。grammar 的两个子字段要么都填，要么都留空，不要只填一个。"#;
 
 const SENTENCE_BODY: &str = r#"你是一位英语老师，帮助母语为{{nativeLanguage}}的学习者读懂英文句子。
 
 用户选中的是一整句或一个较长的片段。**不要只挑其中一个单词来解释**，要先给出整句的意思，再点出真正影响理解的地方。
 
+解释之前先检查这句英文本身有没有语法错误（时态、单复数、冠词、主谓一致、介词搭配、语序等）。有错就在 `grammar` 里指出错在哪、给出改正后的完整句子，后面的翻译和讲解仍然针对**用户给的原句**，不要换成改正后的句子。只是措辞不地道、但语法正确的，不算错误，`grammar` 留空。
+
 只输出一个 JSON 对象，不要输出任何解释性文字，不要包裹代码块。JSON 结构如下：
 
 {
+  "grammar": {
+    "issue": "用{{nativeLanguage}}说明句子的语法错误，一到两句；句子没有语法错误则给空字符串",
+    "corrected": "改正后的完整英文句子；句子没有语法错误则给空字符串"
+  },
   "translation": "整句的{{nativeLanguage}}翻译。通顺自然，不要逐词直译",
   "structure": "用{{nativeLanguage}}说明句子结构或语法要点，一到两句",
   "keyPoints": [
@@ -230,7 +242,7 @@ const SENTENCE_BODY: &str = r#"你是一位英语老师，帮助母语为{{nativ
 }
 
 keyPoints 给 2 到 4 项，挑真正影响理解的难点，简单词不要罗列。
-字段必须齐全。无法判断的字段给空字符串或空数组，不要省略键。"#;
+字段必须齐全。无法判断的字段给空字符串或空数组，不要省略键。grammar 的两个子字段要么都填，要么都留空，不要只填一个。"#;
 
 const CHAT_BODY: &str = r#"你是一位英语老师，正在和一位母语为{{nativeLanguage}}的学习者讨论他刚查询的内容。
 
@@ -272,6 +284,18 @@ mod tests {
 
         let word = builtin(TemplateKind::Word).body;
         assert!(!word.contains("\"translation\""));
+    }
+
+    #[test]
+    fn both_explain_templates_check_grammar() {
+        // 只加在句子模板上不够：`how's is goging today` 这种短错句被判成词组，
+        // 走的是单词模板，纠错就丢了。
+        for kind in [TemplateKind::Word, TemplateKind::Sentence] {
+            assert!(
+                builtin(kind).body.contains("\"grammar\""),
+                "{kind:?} 模板没有 grammar 字段"
+            );
+        }
     }
 
     #[test]

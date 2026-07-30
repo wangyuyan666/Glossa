@@ -27,6 +27,7 @@ export function ExplanationCard({ explanation, streaming, raw }: Props) {
     );
   }
 
+  // grammar 两套 schema 都有，不能拿它分流，只看各自独有的字段。
   const isSentence =
     !!explanation.translation || !!explanation.structure || !!explanation.keyPoints?.length;
 
@@ -37,9 +38,29 @@ export function ExplanationCard({ explanation, streaming, raw }: Props) {
   );
 }
 
-function SentenceBody({ translation, structure, keyPoints }: Partial<Explanation>) {
+/**
+ * 原句 / 选中内容的语法纠错，排在释义之前。
+ *
+ * 只有真挑出问题才显示：没毛病时模型给的是空串，不能因为键存在就渲染一个空框。
+ */
+function GrammarNote({ grammar }: Pick<Partial<Explanation>, "grammar">) {
+  const issue = grammar?.issue?.trim();
+  const corrected = grammar?.corrected?.trim();
+  if (!issue) return null;
+
+  return (
+    <div className="card__grammar">
+      <p className="card__grammar-issue">{issue}</p>
+      {corrected && <p className="card__grammar-fix">{corrected}</p>}
+    </div>
+  );
+}
+
+function SentenceBody({ grammar, translation, structure, keyPoints }: Partial<Explanation>) {
   return (
     <>
+      <GrammarNote grammar={grammar} />
+
       {translation && <p className="card__sense">{translation}</p>}
       {structure && <p className="card__why">{structure}</p>}
 
@@ -58,6 +79,7 @@ function SentenceBody({ translation, structure, keyPoints }: Partial<Explanation
 }
 
 function WordBody({
+  grammar,
   phonetic,
   pos,
   senseHere,
@@ -71,6 +93,8 @@ function WordBody({
 
   return (
     <>
+      <GrammarNote grammar={grammar} />
+
       {(barePhonetic || pos) && (
         <p className="card__meta">
           {barePhonetic && <span className="card__phonetic">/{barePhonetic}/</span>}
