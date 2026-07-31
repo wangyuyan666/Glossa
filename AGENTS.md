@@ -278,7 +278,7 @@ turns(id, lookup_id → lookups.id ON DELETE CASCADE, seq, role, content)
 
 **明文存 key 是用户明确选择的方案**，不是疏漏。文件权限收紧到 0600，README 里有安全说明。不要擅自改回 Keychain。
 
-**改 `APP_DIR_NAME` 就是断老用户的配置。** 数据目录名（`config.rs` 的 `APP_DIR_NAME`）不只是历史，settings.json 里还有 API key——换个名字对老用户等于配置全丢。项目从 EnAssistant 改名时靠 `migrate_legacy_dir()` 把旧目录整体 rename 过来，它必须排在 `config::load` 和 `History::open` 之前调（`lib.rs` 的 `setup`），否则新目录先被创建出来，迁移条件不成立。真要再改名，照这个模式加一层，别直接换常量。
+**改 `APP_DIR_NAME` 就是断用户的配置。** 数据目录名（`config.rs` 的 `APP_DIR_NAME`）不只是历史，settings.json 里还有 API key——换个名字对已装用户等于配置全丢。真要改名，得先加一层把旧目录 rename 过来的迁移，且必须排在 `config::load` 和 `History::open` 之前调（`lib.rs` 的 `setup`），否则新目录先被创建出来，迁移条件不成立。别直接换常量。
 
 **结构化输出不用 `response_format` / tool use。** 多数 OpenAI 兼容端点（Ollama、LM Studio、各类中转）不支持或行为不一致。释义靠提示词约束 JSON，前端 `jsonish.ts` 做容错增量解析。这是跨协议唯一稳的做法，改用原生结构化输出会让一半端点挂掉。
 

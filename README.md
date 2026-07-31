@@ -76,13 +76,6 @@ http://127.0.0.1:1234/v1       # LM Studio
 
 > 为什么用本地端口而不是 `glossa://` deep link：macOS 不支持运行时注册 URL scheme，deep link 只有装到 `/Applications` 的打包 .app 才能测，`tauri dev` 下没法调试。另外 PopClip 的 url action 会顺带打开浏览器标签页。
 
-## 从 EnAssistant 升级
-
-本项目原名 EnAssistant，改名后有两件事：
-
-- **数据自动迁移**。首次启动时 `~/Library/Application Support/EnAssistant/` 会整体改名为 `Glossa/`，模型服务配置和查词历史都保留，不用手动搬。如果两个目录同时存在（新版已经跑过并写过数据），迁移会跳过，旧目录原样留着由你处置。
-- **PopClip 里的旧扩展要手动删**。扩展 identifier 从 `com.peter.enassistant` 变成了 `com.github.glossa`，PopClip 会当成两个扩展，条上出现两个图标。去 PopClip 的扩展列表里删掉 EnAssistant 那个。
-
 ## 主窗口
 
 只有主窗口和设置窗口两个界面。划词触发时唤起的也是主窗口，不再有独立弹窗。
