@@ -1,6 +1,6 @@
 .app {
   display: grid;
-  grid-template-columns: 268px 1fr;
+  grid-template-columns: 220px 1fr;
   height: 100%;
   background: var(--bg-page);
 }
@@ -16,9 +16,15 @@
 .workspace__query .sidebar-toggle {
   flex: none;
   align-self: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 0;
+}
+
+.brand .sidebar-toggle .icon,
+.workspace__query .sidebar-toggle .icon {
+  width: 19px;
+  height: 19px;
 }
 
 .brand .sidebar-toggle {
@@ -39,7 +45,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 16px 14px 12px;
+  /* 右内边距跟下面的搜索框对齐（12px），收起按钮的右边缘才和搜索框一条竖线上。 */
+  padding: 16px 12px 12px 14px;
 }
 
 .brand__logo {
