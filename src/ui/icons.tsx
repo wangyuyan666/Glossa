@@ -145,3 +145,41 @@ export const IconCopy = svg(
     <path d="M15 5.5A2.5 2.5 0 0012.5 3h-7A2.5 2.5 0 003 5.5v7A2.5 2.5 0 005.5 15" />
   </>,
 );
+
+export const IconRefresh = svg(
+  <>
+    <path d="M20 7v5h-5" />
+    <path d="M19.2 9A8 8 0 005.4 6.4L3 9" />
+    <path d="M4 17v-5h5" />
+    <path d="M4.8 15A8 8 0 0018.6 17.6L21 15" />
+  </>,
+);
+
+export const IconTest = svg(
+  <>
+    <path d="M9 3h6" />
+    <path d="M10 3v5l-5 9a2.5 2.5 0 002.2 3.7h9.6A2.5 2.5 0 0019 17l-5-9V3" />
+    <path d="M7.5 15h9" />
+  </>,
+);
+
+export const IconCheckCircle = svg(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M8 12.5l2.5 2.5L16.5 9" />
+  </>,
+);
+
+export const IconXCircle = svg(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9 9l6 6M15 9l-6 6" />
+  </>,
+);
+
+export const IconSpinner = svg(
+  <>
+    <path d="M12 3a9 9 0 019 9" />
+    <path d="M12 21a9 9 0 01-9-9" opacity=".35" />
+  </>,
+);

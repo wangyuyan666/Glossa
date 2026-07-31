@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import * as api from "../lib/api";
 import type { Protocol, Provider } from "../lib/types";
@@ -8,33 +8,40 @@ import {
   PROTOCOL_LABELS,
 } from "../lib/types";
 import { IconChevronDown, IconEye, IconEyeOff } from "../ui/icons";
+import {
+  ModelActionButtons,
+  ModelStatusBanner,
+  type ModelActionStatus,
+  type ModelLoadResult,
+} from "./ModelActions";
+import { ModelCombobox } from "./ModelCombobox";
 
 interface Props {
   provider: Provider;
   models: string[];
   onChange: (provider: Provider) => void;
   onRemove: () => void;
-  onModelsLoaded: (models: string[]) => void;
+  onLoadModels: (provider: Provider, force: boolean) => Promise<ModelLoadResult>;
 }
-
-type Status =
-  | { kind: "idle" }
-  | { kind: "busy"; label: string }
-  | { kind: "ok"; message: string }
-  | { kind: "fail"; message: string };
 
 export function ProviderEditor({
   provider,
   models,
   onChange,
   onRemove,
-  onModelsLoaded,
+  onLoadModels,
 }: Props) {
   const [revealKey, setRevealKey] = useState(false);
   const [testModel, setTestModel] = useState("");
-  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [status, setStatus] = useState<ModelActionStatus>({ kind: "idle" });
+  const operation = useRef(0);
 
   const patch = (fields: Partial<Provider>) => onChange({ ...provider, ...fields });
+
+  useEffect(() => {
+    operation.current += 1;
+    setStatus({ kind: "idle" });
+  }, [provider.protocol, provider.baseUrl, provider.apiKey, provider.maxTokens]);
 
   const changeProtocol = (protocol: Protocol) => {
     // base_url 还停在上一个协议的默认值时才跟着换，避免覆盖用户填的自定义地址。
@@ -48,38 +55,77 @@ export function ProviderEditor({
   };
 
   const fetchModels = async () => {
-    setStatus({ kind: "busy", label: "拉取模型…" });
+    const currentOperation = operation.current + 1;
+    operation.current = currentOperation;
+    setStatus({ kind: "loading", action: "models" });
     try {
-      const list = await api.listModels(provider);
-      onModelsLoaded(list);
+      const { models: loadedModels } = await onLoadModels(provider, true);
+      if (operation.current !== currentOperation) return;
       setStatus(
-        list.length
-          ? { kind: "ok", message: `拉到 ${list.length} 个模型` }
-          : { kind: "fail", message: "端点返回空列表，请手填模型名" },
+        loadedModels.length
+          ? {
+              kind: "success",
+              action: "models",
+              message: `已获取 ${loadedModels.length} 个模型`,
+            }
+          : {
+              kind: "error",
+              action: "models",
+              message: "未获取到模型。该端点可能不支持模型列表，请手动填写模型名。",
+            },
       );
     } catch (e) {
-      // 不少兼容端点没实现 /models，这不算配置错误，提示手填即可。
-      setStatus({ kind: "fail", message: `拉取失败，请手填模型名：${e}` });
+      if (operation.current !== currentOperation) return;
+      setStatus({
+        kind: "error",
+        action: "models",
+        message: `获取模型失败：${e}。可手动填写模型名后继续测试。`,
+      });
     }
   };
 
   const test = async () => {
     const model = testModel.trim();
     if (!model) {
-      setStatus({ kind: "fail", message: "先填一个模型名再测试" });
+      operation.current += 1;
+      setStatus({
+        kind: "error",
+        action: "test",
+        message: "请先填写模型名，再测试连接。",
+      });
       return;
     }
-    setStatus({ kind: "busy", label: "测试中…" });
+
+    const currentOperation = operation.current + 1;
+    operation.current = currentOperation;
+    setStatus({ kind: "loading", action: "test" });
     try {
       const reply = await api.testProvider(provider, model);
-      setStatus({ kind: "ok", message: `连接正常，模型回复：${reply}` });
+      if (operation.current !== currentOperation) return;
+      setStatus({
+        kind: "success",
+        action: "test",
+        message: `连接正常，模型回复：${reply}`,
+      });
     } catch (e) {
-      setStatus({ kind: "fail", message: String(e) });
+      if (operation.current !== currentOperation) return;
+      setStatus({
+        kind: "error",
+        action: "test",
+        message: `测试连接失败：${e}`,
+      });
     }
   };
 
-  const busy = status.kind === "busy";
-  const listId = `models-${provider.id}`;
+  const handleTestModelChange = (value: string) => {
+    setTestModel(value);
+    if (status.kind !== "idle" && status.action === "test") {
+      operation.current += 1;
+      setStatus({ kind: "idle" });
+    }
+  };
+
+  const inputId = `test-model-${provider.id}`;
 
   return (
     <fieldset className="provider">
@@ -135,7 +181,7 @@ export function ProviderEditor({
             type="button"
             className="key-field__eye"
             title={revealKey ? "隐藏" : "显示明文"}
-            onClick={() => setRevealKey((v) => !v)}
+            onClick={() => setRevealKey((value) => !value)}
           >
             {revealKey ? <IconEyeOff /> : <IconEye />}
           </button>
@@ -163,37 +209,25 @@ export function ProviderEditor({
         </small>
       </label>
 
-      <label>
-        测试模型
-        <span className="key-field">
-          <input
+      <div className="provider__test">
+        <label htmlFor={inputId}>测试模型</label>
+        <div className="settings-model-control">
+          <ModelCombobox
+            id={inputId}
             value={testModel}
-            list={listId}
+            options={models}
             placeholder="填一个该端点上的模型名"
-            onChange={(e) => setTestModel(e.target.value)}
+            onChange={handleTestModelChange}
           />
-          <datalist id={listId}>
-            {models.map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
-        </span>
-      </label>
-
-      <div className="provider__buttons">
-        <button type="button" onClick={() => void fetchModels()} disabled={busy}>
-          拉取模型列表
-        </button>
-        <button type="button" onClick={() => void test()} disabled={busy}>
-          测试连接
-        </button>
+          <ModelActionButtons
+            status={status}
+            onGetModels={() => void fetchModels()}
+            onTestConnection={() => void test()}
+          />
+        </div>
       </div>
 
-      {status.kind !== "idle" && (
-        <p className={`status status--${status.kind}`}>
-          {status.kind === "busy" ? status.label : status.message}
-        </p>
-      )}
+      <ModelStatusBanner status={status} />
     </fieldset>
   );
 }
