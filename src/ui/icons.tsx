@@ -61,6 +61,14 @@ export const IconGear = svg(
   </>,
 );
 
+/** 侧栏开关：一个方框，左边切出一条竖线当作侧栏。 */
+export const IconSidebar = svg(
+  <>
+    <rect x="3" y="4" width="18" height="16" rx="2.5" />
+    <path d="M9.5 4v16" />
+  </>,
+);
+
 export const IconTrash = svg(
   <>
     <path d="M4 7h16" />

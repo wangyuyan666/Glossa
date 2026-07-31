@@ -5,6 +5,26 @@
   background: var(--bg-page);
 }
 
+/* 侧栏收起时整个不渲染，工作区独占一列。 */
+.app--collapsed {
+  grid-template-columns: 1fr;
+}
+
+/* 展开时在侧栏顶栏靠右，收起时在查询栏行首——两处是同一个按钮。
+   选择器要压过 button.plain 与 .workspace__query button 的内边距，故都带上父级。 */
+.brand .sidebar-toggle,
+.workspace__query .sidebar-toggle {
+  flex: none;
+  align-self: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.brand .sidebar-toggle {
+  margin-left: auto;
+}
+
 /* ---- 左侧历史栏 ---- */
 
 .sidebar {

@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import * as api from "../lib/api";
 import type { LookupSummary } from "../lib/types";
-import { IconClose, IconSearch, IconTrash } from "../ui/icons";
+import { IconClose, IconSearch, IconSidebar, IconTrash } from "../ui/icons";
 
 interface Props {
   items: LookupSummary[];
@@ -13,6 +13,26 @@ interface Props {
   onPick: (id: string) => void;
   onDelete: (id: string) => void;
   onClear: () => void;
+  onToggle: () => void;
+}
+
+/**
+ * 侧栏开关。展开时挂在侧栏顶部、收起时挂在查询栏行首，两处共用同一个按钮，
+ * 位置上正好接得住——收起后工作区的左边缘就是原来侧栏的位置。
+ */
+export function SidebarToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className="plain sidebar-toggle"
+      title={`${collapsed ? "展开" : "收起"}侧栏 ⌘\\`}
+      aria-label={`${collapsed ? "展开" : "收起"}侧栏`}
+      aria-expanded={!collapsed}
+      onClick={onToggle}
+    >
+      <IconSidebar />
+    </button>
+  );
 }
 
 function relativeTime(ms: number): string {
@@ -64,6 +84,7 @@ export function HistorySidebar({
   onPick,
   onDelete,
   onClear,
+  onToggle,
 }: Props) {
   const [confirmingClear, setConfirmingClear] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -96,6 +117,7 @@ export function HistorySidebar({
           <span className="brand__name">Glossa</span>
           <span className="brand__tagline">英语学习 · 句子助手</span>
         </div>
+        <SidebarToggle collapsed={false} onToggle={onToggle} />
       </header>
 
       <div className="sidebar__search">

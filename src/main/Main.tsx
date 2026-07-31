@@ -8,9 +8,11 @@ import { AskBox } from "../lookup/AskBox";
 import { LookupView } from "../lookup/LookupView";
 import { useLookup } from "../lookup/useLookup";
 import { IconClose, IconGear, IconSearch } from "../ui/icons";
-import { HistorySidebar, useHistory } from "./HistorySidebar";
+import { HistorySidebar, SidebarToggle, useHistory } from "./HistorySidebar";
 import "../lookup/lookup.css";
 import "./main.css";
+
+const COLLAPSED_KEY = "glossa.sidebarCollapsed";
 
 export function Main() {
   const lookup = useLookup();
@@ -20,6 +22,27 @@ export function Main() {
   const [input, setInput] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [configured, setConfigured] = useState(true);
+
+  // 收起状态只是窗口布局偏好，没必要走后端 settings，放 localStorage 就够。
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(COLLAPSED_KEY) === "1",
+  );
+
+  useEffect(() => {
+    localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
+
+  // ⌘\ 开关侧栏，和按钮 title 上标的一致。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        e.preventDefault();
+        setCollapsed((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // 设置窗口保存后不会通知过来，所以每次窗口重新获得焦点都重读一遍——
   // 从设置切回来就是这个时机。拿不到 focus 事件时退化成「重启后生效」，
@@ -89,16 +112,19 @@ export function Main() {
   };
 
   return (
-    <div className="app">
-      <HistorySidebar
-        items={history.items}
-        activeId={activeId}
-        query={history.query}
-        onQueryChange={history.setQuery}
-        onPick={pick}
-        onDelete={remove}
-        onClear={clear}
-      />
+    <div className={`app${collapsed ? " app--collapsed" : ""}`}>
+      {!collapsed && (
+        <HistorySidebar
+          items={history.items}
+          activeId={activeId}
+          query={history.query}
+          onQueryChange={history.setQuery}
+          onPick={pick}
+          onDelete={remove}
+          onClear={clear}
+          onToggle={() => setCollapsed(true)}
+        />
+      )}
 
       <main className="workspace">
         {!configured && (
@@ -111,6 +137,7 @@ export function Main() {
         )}
 
         <div className="workspace__query">
+          {collapsed && <SidebarToggle collapsed onToggle={() => setCollapsed(false)} />}
           <div className="field">
             <IconSearch className="field__icon" />
             <input
@@ -146,7 +173,7 @@ export function Main() {
         <div className="surface workspace__result">
           <LookupView
             lookup={lookup}
-            idleHint="在上方输入要查的词，或在任意 app 里划词用 PopClip 触发。查过的词会出现在左侧。"
+            idleHint="在上方输入要查的词或句子，或在任意 app 里划词用 PopClip 触发。"
           />
         </div>
 
