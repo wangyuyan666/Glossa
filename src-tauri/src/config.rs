@@ -87,7 +87,10 @@ pub struct Settings {
     /// 用户自建的提示词模板。内置模板不在这里——它们留在代码中，见 `templates.rs`。
     #[serde(default)]
     pub templates: Vec<PromptTemplate>,
-    /// 各类当前启用的模板 id。None 或指向已删除的模板都回落到内置。
+    /// 统一释义当前启用的模板 id。旧配置没有该字段时回落新版内置模板。
+    #[serde(default)]
+    pub active_explain: Option<String>,
+    /// 旧版选择记录只为无损读取和保存已有 settings.json，不再参与真实释义。
     #[serde(default)]
     pub active_word: Option<String>,
     #[serde(default)]
@@ -115,6 +118,7 @@ impl Default for Settings {
             port: default_port(),
             native_language: default_native_language(),
             templates: Vec::new(),
+            active_explain: None,
             active_word: None,
             active_sentence: None,
             active_translate: None,
@@ -140,10 +144,11 @@ impl Settings {
 
     fn active_id(&self, kind: TemplateKind) -> Option<&String> {
         match kind {
+            TemplateKind::Explain => self.active_explain.as_ref(),
+            TemplateKind::Chat => self.active_chat.as_ref(),
             TemplateKind::Word => self.active_word.as_ref(),
             TemplateKind::Sentence => self.active_sentence.as_ref(),
             TemplateKind::Translate => self.active_translate.as_ref(),
-            TemplateKind::Chat => self.active_chat.as_ref(),
         }
     }
 
@@ -185,7 +190,9 @@ pub fn settings_path(app: &AppHandle) -> Result<PathBuf> {
 /// 从头配一遍模型服务，还会误以为配置丢了。
 pub fn migrate_legacy_dir(app: &AppHandle) {
     let Ok(new_dir) = config_dir(app) else { return };
-    let Some(parent) = new_dir.parent() else { return };
+    let Some(parent) = new_dir.parent() else {
+        return;
+    };
     migrate_dir(&parent.join(LEGACY_APP_DIR_NAME), &new_dir);
 }
 
@@ -305,23 +312,23 @@ mod tests {
     #[test]
     fn uses_the_selected_user_template() {
         let settings = Settings {
-            templates: vec![user_template("mine", TemplateKind::Word)],
-            active_word: Some("mine".into()),
+            templates: vec![user_template("mine", TemplateKind::Explain)],
+            active_explain: Some("mine".into()),
             ..Settings::default()
         };
-        assert_eq!(settings.template(TemplateKind::Word).body, "自定义正文");
+        assert_eq!(settings.template(TemplateKind::Explain).body, "自定义正文");
     }
 
     #[test]
     fn falls_back_when_the_selected_template_was_deleted() {
         // 提示词是主流程的一环，指向空气时不能就没有提示词了。
         let settings = Settings {
-            active_word: Some("已删除".into()),
+            active_explain: Some("已删除".into()),
             ..Settings::default()
         };
         assert_eq!(
-            settings.template(TemplateKind::Word).id,
-            templates::builtin_id(TemplateKind::Word)
+            settings.template(TemplateKind::Explain).id,
+            templates::builtin_id(TemplateKind::Explain)
         );
     }
 
@@ -330,12 +337,12 @@ mod tests {
         // 把对话模板选进释义位置，会输出自由文本，卡片直接废掉。
         let settings = Settings {
             templates: vec![user_template("mine", TemplateKind::Chat)],
-            active_word: Some("mine".into()),
+            active_explain: Some("mine".into()),
             ..Settings::default()
         };
         assert_eq!(
-            settings.template(TemplateKind::Word).id,
-            templates::builtin_id(TemplateKind::Word)
+            settings.template(TemplateKind::Explain).id,
+            templates::builtin_id(TemplateKind::Explain)
         );
     }
 
@@ -359,6 +366,31 @@ mod tests {
         let settings: Settings = serde_json::from_str(raw).unwrap();
         assert_eq!(settings.providers[0].max_tokens, None);
         assert_eq!(settings.providers[0].max_tokens_or(4000), 4000);
+    }
+
+    #[test]
+    fn old_prompt_config_loads_without_losing_provider_or_templates() {
+        // 旧 kind 若反序列化失败，load 会整份回退默认值，连 provider 和 API key 都一起消失。
+        let raw = r#"{
+          "providers": [{"id":"p","name":"DeepSeek","protocol":"openai","baseUrl":"https://api.deepseek.com","apiKey":"secret"}],
+          "templates": [
+            {"id":"w","name":"我的单词","kind":"word","body":"word body","builtin":false},
+            {"id":"s","name":"我的句子","kind":"sentence","body":"sentence body","builtin":false},
+            {"id":"t","name":"我的翻译","kind":"translate","body":"translate body","builtin":false}
+          ],
+          "activeWord":"w",
+          "activeSentence":"s",
+          "activeTranslate":"t"
+        }"#;
+        let settings: Settings = serde_json::from_str(raw).unwrap();
+        assert_eq!(settings.providers[0].api_key, "secret");
+        assert_eq!(settings.templates.len(), 3);
+        assert_eq!(settings.active_word.as_deref(), Some("w"));
+        assert_eq!(settings.active_explain, None);
+        assert_eq!(
+            settings.template(TemplateKind::Explain).id,
+            templates::BUILTIN_EXPLAIN_ID
+        );
     }
 
     #[test]
@@ -457,8 +489,14 @@ mod tests {
 
         migrate_dir(&legacy, &new_dir);
 
-        assert_eq!(fs::read_to_string(legacy.join(SETTINGS_FILE)).unwrap(), "旧");
-        assert_eq!(fs::read_to_string(new_dir.join(SETTINGS_FILE)).unwrap(), "新");
+        assert_eq!(
+            fs::read_to_string(legacy.join(SETTINGS_FILE)).unwrap(),
+            "旧"
+        );
+        assert_eq!(
+            fs::read_to_string(new_dir.join(SETTINGS_FILE)).unwrap(),
+            "新"
+        );
 
         fs::remove_dir_all(&parent).ok();
     }

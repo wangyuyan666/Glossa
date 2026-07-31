@@ -16,6 +16,7 @@ const EMPTY: SettingsData = {
   port: 8765,
   nativeLanguage: "中文",
   templates: [],
+  activeExplain: null,
   activeWord: null,
   activeSentence: null,
   activeTranslate: null,

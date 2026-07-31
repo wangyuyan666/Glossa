@@ -58,8 +58,8 @@ src-tauri/src/capture/
 src-tauri/src/
   lib.rs          Tauri Builder、全部 #[tauri::command]、流式事件的编排
   history.rs      查询历史（SQLite）
-  templates.rs    提示词模板：内置正文、变量渲染、静态检查
-  prompts.rs      判定单词/句子、拼首轮用户消息
+  templates.rs    提示词模板：统一释义正文、变量渲染、静态检查
+  prompts.rs      拼首轮用户消息、定义三类实测样例
   popclip.rs      PopClip 扩展的生成与安装（package 一键）
   config.rs       Settings 结构与磁盘读写（明文 JSON + 0600）
   server.rs       本地取词监听（axum，只绑 127.0.0.1）
@@ -98,7 +98,7 @@ src/
 
 ## 提示词模板
 
-`templates.rs`。四类（`word` / `sentence` / `translate` / `chat`）各自独立选用——用户想只改释义风格、保留默认对话，不该被迫连对话一起写。
+`templates.rs`。当前可选两类（`explain` / `chat`）——用户想只改释义风格、保留默认对话，不该被迫连对话一起写。`explain` 在一次请求里自行判断 `word` / `sentence` / `translate`。旧版三类 kind 仍可反序列化，只为无损保留已有自定义模板和选择记录，不再参与真实请求。
 
 **内置模板留在代码里，不写进 `settings.json`**，配置只记「当前选了哪个 id」。内置提示词以后还会改；把副本存进用户配置的话，升级后用户还在跑旧提示词，而且完全看不出来。`config::sanitize()` 在落盘前剔除内置副本、并把 `builtin` 标记强制置 false。
 
@@ -113,7 +113,7 @@ src/
 | 静态检查（`templates::check`） | 拼错变量、漏写必需字段名、正文过长 | 模型是否真的照做 |
 | 实测（`lib.rs` 的 `probe_template`） | **模型不听话**——自定义提示词最常见的失败方式 | — |
 
-实测用固定样例（`prompts::probe_input`）真发一次请求，核对返回 JSON 里必需字段是否齐全，并把原始输出展示给用户。这不是锦上添花，是用户唯一的自查手段。
+统一释义实测用 `prompts::probe_cases` 的短语、短句、中文三个固定样例各发一次请求，核对 `mode` 是否选对、对应分支字段是否齐全，并把原始输出展示给用户。对话仍只测一例。这不是锦上添花，是用户唯一的自查手段。
 
 自定义提示词的固有代价：卡片渲染稳定是因为内置提示词经过调试，用户写的模板漏字段、或被模型忽略，卡片就会缺块。这不是能修的 bug。
 
@@ -121,30 +121,25 @@ src/
 
 选中一整句时，输出必须是**整句翻译 + 难点**，不能退化成挑一个词解释。选中的内容不是英文时，那是「这句话英语怎么说」，不是「这是什么意思」。
 
-判定全在 Rust 侧（`prompts.rs` 的 `kind_for`），不交给模型——确定性、可单测、不多花一次调用。**顺序不能反**：
+真实请求始终使用 `TemplateKind::Explain`。Rust 不再按词数、标点或字符集预判，也不额外发一次分类请求；统一系统提示词要求模型先判断模式，并把 `mode` 作为 JSON 第一个字段输出：
 
-1. `looks_foreign` — 出现任意一个非拉丁字母（码位 > U+024F 的字母字符）就走翻译。中文没有空格，`is_sentence` 数出来永远是 1 个词，不先拦这一道的话整段中文会落进单词模板。`café` / `naïve` 是拉丁字母，不会误判。
-2. `is_sentence` — 六个词以上，或三词以上且带句末标点。
+| mode | 用途 | 分支字段 |
+| --- | --- | --- |
+| `word` | 英文单词、固定搭配、名词短语 | `grammar{issue,corrected}` `word` `phonetic` `pos` `senseHere` `why` `collocations[]` `example` |
+| `sentence` | 英文完整话语、分句、短问句、口语、省略句 | `grammar{issue,corrected}` `translation` `structure` `keyPoints[{term,note}]` |
+| `translate` | 主要不是英文，用户想知道地道英文怎么说 | `english` `wordChoice[{term,note}]` `alternatives[{text,when}]` |
 
-三套提示词、三套 JSON 结构：
+统一模板只统一**入口和分类**，没有把三套字段强行合成一个大对象。模型选定 mode 后只输出对应分支，不补另外两套键。否则 `word` / `phonetic` / `pos` 仍会逼模型从整句或中文里硬挑一个词，重现「问整句却只解释一个词」的 bug。
 
-| | 单词 / 短语 | 句子 | 译成英文 |
-| --- | --- | --- | --- |
-| 字段 | `grammar{issue,corrected}` `word` `phonetic` `pos` `senseHere` `why` `collocations[]` `example` | `grammar{issue,corrected}` `translation` `structure` `keyPoints[{term,note}]` | `english` `wordChoice[{term,note}]` `alternatives[{text,when}]` |
-| 上下文 | 用 `context` 定位此处义项 | 不用——句子本身就是自己的上下文 | 不用 |
+分类要看语言结构和意图，不看长度：`Himan, what's your name` 即使只有四词、没有句末标点，也应是 `sentence`。拼写或语法错误也不能让完整话语退化为 `word`。
 
-**别把几套字段合成一套。** 句子或中文走单词 schema 时，`word`（词条原形）/`phonetic`/`pos` 会逼着模型挑个词来填、给中文标音标，症状就是「选了一整句却只翻译其中一个单词」。这是本项目实际踩过的 bug。
+翻译模式重点是 `wordChoice`（**为什么用这些词**），不是译文本身。`alternatives` 给语域/语气不同的备选。翻译模式没有 `grammar`：原文本来就不是英文。
 
-翻译模式的重点是 `wordChoice`（**为什么用这些词**），不是译文本身——译文别的工具也给得出，选词理由才是这里要教的。`alternatives` 给语域/语气不同的备选。翻译模式**没有 `grammar`**：原文本来就不是英文。
+`grammar` 排在英文两种分支前面，没毛病时两个子字段都是空串、卡片不渲染。它不用于判断 mode。
 
-`grammar` 是选中内容的拼写 / 语法纠错，排在两套释义 schema 的最前，没毛病时两个子字段都是空串、卡片不渲染这一块。
+前端 `ExplanationCard` 优先使用合法 `mode`；旧历史没有该字段时，继续按独有字段回退推断（`english` → translate，`translation` → sentence，`senseHere` 等 → word）。流式期间只有 grammar 到达时不显示模式角标，避免先闪成默认 word。
 
-- **两套都有**，因为 `is_sentence` 挡不住短错句：`how's is goging today` 才 4 个词又没句末标点，判成词组走单词模板，只加在句子模板上等于没加。也正因为两套都有，**它不能用来判断是词还是句**，`ExplanationCard` 分流只看各自独有的字段。
-- **不在** `required_fields` 里：加进去会让用户已有的自建模板立刻变 error，实测探针也会在「样例本来就没语法错」时误判模型漏了字段。
-
-前端 `ExplanationCard` 按字段存在性分流（`english`/`wordChoice`/`alternatives` → 翻译，`translation`/`structure`/`keyPoints` → 句子，其余 → 单词），不需要额外的模式标记——`parsePartialJson` 返回的本来就是部分对象，流式渲染天然继续工作。
-
-`history.rs` 的 `extract_sense` 取侧栏副标题时 `senseHere` → `translation` → `english` 依次回退，少一个回退那类记录在侧栏就是空的一行。
+`history.rs` 的 `extract_sense` 仍按 `senseHere` → `translation` → `english` 回退，因此 SQLite 无需迁移，新旧记录都能显示侧栏摘要。
 
 ## 两个窗口
 
@@ -299,10 +294,12 @@ npm test                      # vitest
 cd src-tauri && cargo test
 ```
 
-现有测试覆盖两处纯逻辑，都是真机上不好复现的：
+现有测试重点覆盖这些真机上难复现或容易静默回归的逻辑：
 
+- `config.rs` — 旧提示词 kind 与设置字段兼容，不能因一次 schema 升级把 provider / API key 整份回退为空。
+- `templates.rs` / `prompts.rs` / `lib.rs` — 统一释义模板契约、三类 probe 的 mode 与字段校验。
 - `history.rs` 的 `migrate()` — 含老库迁移（曾有过一个 `source` 列，记查询从弹窗还是主窗口发起；弹窗删掉后该列失去意义且是 NOT NULL，会让新的 INSERT 失败，所以必须真删）。
-- `jsonish.ts` 的 `parsePartialJson()` — 半截 JSON 的容错解析。
+- `jsonish.ts` — 半截 JSON 的容错解析；`lookup/*.test.ts` — mode 回退与追问上下文覆盖。
 
 不接真 key 也能验证两条协议：起一个 mock SSE 端点，把 provider 的 `baseUrl` 指过去即可。
 `openai` 分支要 `data: {"choices":[{"delta":{"content":...}}]}` + `data: [DONE]`；

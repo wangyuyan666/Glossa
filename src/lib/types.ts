@@ -23,13 +23,19 @@ export interface RoleBinding {
   model: string;
 }
 
-export type TemplateKind = "word" | "sentence" | "translate" | "chat";
+export type TemplateKind =
+  | "explain"
+  | "chat"
+  | "word"
+  | "sentence"
+  | "translate";
 
 export const TEMPLATE_KIND_LABELS: Record<TemplateKind, string> = {
-  word: "释义（单词）",
-  sentence: "释义（句子）",
-  translate: "译成英文",
+  explain: "统一释义",
   chat: "追问对话",
+  word: "旧版 · 单词释义",
+  sentence: "旧版 · 句子释义",
+  translate: "旧版 · 译成英文",
 };
 
 export interface PromptTemplate {
@@ -47,13 +53,22 @@ export interface TemplateIssue {
   message: string;
 }
 
-export interface TemplateProbe {
-  /** 模型的原始输出 */
+export interface TemplateProbeCase {
+  label: string;
+  input: string;
+  expectedMode: ExplanationMode | null;
+  actualMode: string | null;
   raw: string;
-  /** 释义类是否解析出合法 JSON；对话类只要非空即为 true */
   parsed: boolean;
-  /** 契约里有、模型没输出的字段 */
   missingFields: string[];
+  typeErrors: string[];
+  unexpectedFields: string[];
+  passed: boolean;
+}
+
+export interface TemplateProbe {
+  passed: boolean;
+  cases: TemplateProbeCase[];
 }
 
 export interface Settings {
@@ -67,7 +82,9 @@ export interface Settings {
 
   /** 用户自建的模板。内置模板不在这里，走 api.builtinTemplates() 取 */
   templates: PromptTemplate[];
-  /** 各类当前启用的模板 id，null 或指向已删除的模板都回落到内置 */
+  /** 统一释义当前启用的模板 id，null 或指向已删除的模板都回落到内置 */
+  activeExplain: string | null;
+  /** 旧版选择记录只为无损保留已有配置，不再参与真实释义 */
   activeWord: string | null;
   activeSentence: string | null;
   activeTranslate: string | null;
@@ -107,14 +124,16 @@ export interface LookupPayload {
   context: string | null;
 }
 
+export type ExplanationMode = "word" | "sentence" | "translate";
+
 /**
  * 释义卡片。流式期间为部分字段，故用处都是 `Partial<Explanation>`。
  *
- * 单词、句子、译成英文是三套字段，Rust 侧决定用哪套提示词：先看是不是英文
- * （`looks_foreign`），再看长度（`is_sentence`），都在 prompts.rs。
- * 卡片按字段存在性渲染，不需要额外的模式标记。
+ * 统一提示词让模型自行判断模式；`mode` 必须先输出。旧历史没有 mode，前端仍按
+ * 独有字段回退推断，保证升级后可继续打开。
  */
 export interface Explanation {
+  mode: ExplanationMode;
   /**
    * 选中内容本身的拼写 / 语法纠错。释义的两套 schema 都有，所以不能拿它区分词和句；
    * 翻译模式没有这一项（原文本来就不是英文）。

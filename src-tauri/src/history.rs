@@ -133,9 +133,23 @@ fn extract_sense(explanation: &str) -> String {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
         return String::new();
     };
+    if let Some(key) = match value["mode"].as_str() {
+        Some("word") => Some("senseHere"),
+        Some("sentence") => Some("translation"),
+        Some("translate") => Some("english"),
+        _ => None,
+    } {
+        return value[key]
+            .as_str()
+            .filter(|sense| !sense.is_empty())
+            .unwrap_or_default()
+            .to_string();
+    }
+
+    // 旧历史没有 mode，继续按三套独有字段回退。
     ["senseHere", "translation", "english"]
         .iter()
-        .find_map(|key| value[*key].as_str().filter(|s| !s.is_empty()))
+        .find_map(|key| value[*key].as_str().filter(|sense| !sense.is_empty()))
         .unwrap_or_default()
         .to_string()
 }
@@ -387,6 +401,20 @@ mod tests {
         )
         .unwrap();
         assert_eq!(list(&h, 10, 0, None).unwrap()[0].sense, "我明白了。");
+    }
+
+    #[test]
+    fn explicit_mode_ignores_stray_fields_from_other_branches() {
+        let h = memory_history();
+        save_lookup(
+            &h,
+            "a",
+            "这事儿我来扛。",
+            None,
+            r#"{"mode":"translate","english":"I've got this.","senseHere":"错误摘要"}"#,
+        )
+        .unwrap();
+        assert_eq!(list(&h, 10, 0, None).unwrap()[0].sense, "I've got this.");
     }
 
     #[test]

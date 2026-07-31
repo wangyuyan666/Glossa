@@ -10,30 +10,80 @@ export type Phase = "idle" | "explaining" | "ready" | "error";
 /**
  * 把释义卡片压成一段自然语言，作为追问会话的第一条 assistant 消息。
  *
- * 单词和句子两套字段都要覆盖，否则句子查询的追问会丢掉上文。
+ * 三种输出分支都要覆盖，否则某类查询的追问会丢掉上文。
  */
-function explanationAsText(exp: Partial<Explanation>, fallback: string): string {
+export function explanationAsText(exp: Partial<Explanation>, fallback: string): string {
   const lines: string[] = [];
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  const records = (value: unknown): Record<string, unknown>[] =>
+    Array.isArray(value)
+      ? value.filter(
+          (item): item is Record<string, unknown> =>
+            item !== null && typeof item === "object" && !Array.isArray(item),
+        )
+      : [];
 
-  // 纠错两套都有，放最前面——追问时用户往往就是接着问「为什么这里错了」。
-  if (exp.grammar?.issue) {
-    const fix = exp.grammar.corrected ? `\n改正：${exp.grammar.corrected}` : "";
-    lines.push(`语法问题：${exp.grammar.issue}${fix}`);
+  const mode =
+    exp.mode === "word" || exp.mode === "sentence" || exp.mode === "translate"
+      ? exp.mode
+      : null;
+
+  // 旧历史没有 mode，仍覆盖三套字段；新输出只采用明确分支，忽略模型误带的其他字段。
+  if (mode !== "translate") {
+    const grammarIssue = text(exp.grammar?.issue);
+    if (grammarIssue) {
+      const corrected = text(exp.grammar?.corrected);
+      const fix = corrected ? `\n改正：${corrected}` : "";
+      lines.push(`语法问题：${grammarIssue}${fix}`);
+    }
   }
 
-  if (exp.word) lines.push(`${exp.word} ${exp.phonetic ?? ""} ${exp.pos ?? ""}`.trim());
-  if (exp.senseHere) lines.push(exp.senseHere);
-  if (exp.why) lines.push(exp.why);
-  if (exp.collocations?.length) lines.push(`常见搭配：${exp.collocations.join("、")}`);
-  if (exp.example?.en) lines.push(`例句：${exp.example.en} — ${exp.example.zh ?? ""}`);
-
-  if (exp.translation) lines.push(`译文：${exp.translation}`);
-  if (exp.structure) lines.push(exp.structure);
-  if (exp.keyPoints?.length) {
-    lines.push(exp.keyPoints.map((p) => `${p.term}：${p.note}`).join("\n"));
+  if (!mode || mode === "word") {
+    const word = text(exp.word);
+    if (word) lines.push(`${word} ${text(exp.phonetic)} ${text(exp.pos)}`.trim());
+    if (text(exp.senseHere)) lines.push(text(exp.senseHere));
+    if (text(exp.why)) lines.push(text(exp.why));
+    const collocations = Array.isArray(exp.collocations)
+      ? exp.collocations.filter((item): item is string => typeof item === "string")
+      : [];
+    if (collocations.length) lines.push(`常见搭配：${collocations.join("、")}`);
+    if (exp.example && typeof exp.example === "object") {
+      const exampleEn = text(exp.example.en);
+      if (exampleEn) lines.push(`例句：${exampleEn} — ${text(exp.example.zh)}`);
+    }
   }
 
-  return lines.length ? lines.join("\n") : fallback;
+  if (!mode || mode === "sentence") {
+    if (text(exp.translation)) lines.push(`译文：${text(exp.translation)}`);
+    if (text(exp.structure)) lines.push(text(exp.structure));
+    const keyPoints = records(exp.keyPoints);
+    if (keyPoints.length) {
+      lines.push(keyPoints.map((point) => `${text(point.term)}：${text(point.note)}`).join("\n"));
+    }
+  }
+
+  if (!mode || mode === "translate") {
+    if (text(exp.english)) lines.push(`英文表达：${text(exp.english)}`);
+    const wordChoice = records(exp.wordChoice);
+    if (wordChoice.length) {
+      lines.push(wordChoice.map((point) => `${text(point.term)}：${text(point.note)}`).join("\n"));
+    }
+    const alternatives = records(exp.alternatives);
+    if (alternatives.length) {
+      lines.push(
+        `其他说法：${alternatives
+          .map((alt) => {
+            const when = text(alt.when);
+            return `${text(alt.text)}${when ? `（${when}）` : ""}`;
+          })
+          .join("；")}`,
+      );
+    }
+  }
+
+  if (!lines.length) return fallback;
+  if (mode) lines.unshift(`释义模式：${mode}`);
+  return lines.join("\n");
 }
 
 function lookupAsText(text: string, context: string | null): string {

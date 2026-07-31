@@ -15,14 +15,16 @@ interface Props {
   onPatch: (fields: Partial<SettingsData>) => void;
 }
 
-const KINDS: TemplateKind[] = ["word", "sentence", "translate", "chat"];
+const KINDS: TemplateKind[] = ["explain", "chat"];
+const LEGACY_KINDS: TemplateKind[] = ["word", "sentence", "translate"];
 
-/** 各类当前选中的模板 id 存在不同字段里，这里统一读写。 */
+/** 新旧选择记录都保留；真实请求只读取 explain / chat。 */
 const ACTIVE_FIELDS: Record<TemplateKind, keyof SettingsData> = {
+  explain: "activeExplain",
+  chat: "activeChat",
   word: "activeWord",
   sentence: "activeSentence",
   translate: "activeTranslate",
-  chat: "activeChat",
 };
 
 function activeField(kind: TemplateKind): keyof SettingsData {
@@ -40,6 +42,9 @@ export function PromptSection({ settings, onPatch }: Props) {
   }, []);
 
   const all = [...builtins, ...settings.templates];
+  const legacyTemplates = settings.templates.filter((template) =>
+    LEGACY_KINDS.includes(template.kind),
+  );
   const editing = settings.templates.find((t) => t.id === editingId) ?? null;
 
   const setActive = (kind: TemplateKind, id: string | null) => {
@@ -81,9 +86,14 @@ export function PromptSection({ settings, onPatch }: Props) {
     <section className="settings-card">
       <h2>提示词</h2>
       <p className="muted">
-        按选中的内容自动选用：不是英文走「译成英文」，长句走句子，其余走单词。
+        统一释义模板在同一次请求里自行判断单词、句子或译成英文，不再按词数硬分流。
         内置模板不可修改、不可删除，但可以「复制为我的」再改。删掉正在用的模板会自动回落到内置。
       </p>
+      {legacyTemplates.length > 0 && (
+        <p className="warn">
+          旧版单词、句子和翻译模板已停用但仍完整保留。它们只覆盖单一输出结构，不能安全自动合并为统一释义模板。
+        </p>
+      )}
 
       {KINDS.map((kind) => {
         const active = settings[activeField(kind)] as string | null;

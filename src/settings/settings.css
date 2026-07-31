@@ -387,6 +387,15 @@
   gap: 10px;
 }
 
+.probe__case {
+  margin-top: 12px;
+}
+
+.probe__case + .probe__case {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
 .probe__raw {
   margin: 6px 0 0;
   padding: 10px;

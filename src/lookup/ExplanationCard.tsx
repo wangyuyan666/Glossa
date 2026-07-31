@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { Explanation } from "../lib/types";
+import type { Explanation, ExplanationMode } from "../lib/types";
 import {
   IconFix,
   IconKey,
@@ -17,27 +17,116 @@ interface Props {
   raw: string;
 }
 
-export type Mode = "word" | "sentence" | "translate";
+export type Mode = ExplanationMode;
+
+type UnknownRecord = Record<string, unknown>;
+
+function textValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function objectItems(value: unknown): UnknownRecord[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is UnknownRecord =>
+          item !== null && typeof item === "object" && !Array.isArray(item),
+      )
+    : [];
+}
+
+function stringItems(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function exampleValue(value: unknown): UnknownRecord | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : null;
+}
 
 /**
  * 卡片用哪套字段。
  *
- * grammar 两套 schema 都有，不能拿它分流，只看各自独有的字段。流式期间字段是
- * 一个个到的，所以先到什么就按什么渲染，不等整份 JSON。
+ * 新输出优先看模型给的 mode。旧历史没有 mode，仍按各分支独有字段推断。
+ * 流式期间 mode 应当最先到；模型没遵守时，字段回退仍能避免空卡。
  */
-export function modeOf(explanation: Partial<Explanation> | null): Mode {
-  if (!explanation) return "word";
+export function detectedMode(explanation: Partial<Explanation> | null): Mode | null {
+  if (!explanation) return null;
   if (
-    explanation.english ||
-    explanation.wordChoice?.length ||
-    explanation.alternatives?.length
+    explanation.mode === "word" ||
+    explanation.mode === "sentence" ||
+    explanation.mode === "translate"
+  ) {
+    return explanation.mode;
+  }
+  if (
+    textValue(explanation.english).trim() ||
+    objectItems(explanation.wordChoice).length ||
+    objectItems(explanation.alternatives).length
   ) {
     return "translate";
   }
-  if (explanation.translation || explanation.structure || explanation.keyPoints?.length) {
+  if (
+    textValue(explanation.translation).trim() ||
+    textValue(explanation.structure).trim() ||
+    objectItems(explanation.keyPoints).length
+  ) {
     return "sentence";
   }
-  return "word";
+  const example = exampleValue(explanation.example);
+  if (
+    textValue(explanation.word).trim() ||
+    textValue(explanation.phonetic).trim() ||
+    textValue(explanation.pos).trim() ||
+    textValue(explanation.senseHere).trim() ||
+    textValue(explanation.why).trim() ||
+    stringItems(explanation.collocations).length ||
+    textValue(example?.en).trim()
+  ) {
+    return "word";
+  }
+  return null;
+}
+
+export function modeOf(explanation: Partial<Explanation> | null): Mode {
+  return detectedMode(explanation) ?? "word";
+}
+
+export function hasRenderableExplanation(
+  explanation: Partial<Explanation> | null,
+): boolean {
+  if (!explanation) return false;
+  if (textValue(explanation.grammar?.issue).trim()) return true;
+
+  switch (detectedMode(explanation)) {
+    case "word": {
+      const example = exampleValue(explanation.example);
+      return Boolean(
+        textValue(explanation.phonetic).trim() ||
+          textValue(explanation.pos).trim() ||
+          textValue(explanation.senseHere).trim() ||
+          textValue(explanation.why).trim() ||
+          stringItems(explanation.collocations).length ||
+          textValue(example?.en).trim(),
+      );
+    }
+    case "sentence":
+      return Boolean(
+        textValue(explanation.translation).trim() ||
+          textValue(explanation.structure).trim() ||
+          objectItems(explanation.keyPoints).length,
+      );
+    case "translate":
+      return Boolean(
+        textValue(explanation.english).trim() ||
+          objectItems(explanation.wordChoice).length ||
+          objectItems(explanation.alternatives).length,
+      );
+    default:
+      return false;
+  }
 }
 
 /** 一块内容一张带色标的卡。tone 决定色标，只是分类信号，不表达好坏。 */
@@ -68,8 +157,8 @@ function Panel({
  * 不能等整份 JSON 收完再渲染，那样就没有"边收边看"的效果了。
  */
 export function ExplanationCard({ explanation, streaming, raw }: Props) {
-  // 还没解析出任何字段：显示骨架屏，而不是空白或原始 JSON 碎片。
-  if (!explanation) {
+  // mode 先到时还没有可见内容，继续显示骨架；流结束仍没有内容则展示原始输出。
+  if (!hasRenderableExplanation(explanation)) {
     return streaming ? (
       <div className="card card--skeleton">
         <span />
@@ -102,8 +191,8 @@ export function ExplanationCard({ explanation, streaming, raw }: Props) {
  * 只有真挑出问题才显示：没毛病时模型给的是空串，不能因为键存在就渲染一个空框。
  */
 function GrammarNote({ grammar }: Pick<Partial<Explanation>, "grammar">) {
-  const issue = grammar?.issue?.trim();
-  const corrected = grammar?.corrected?.trim();
+  const issue = textValue(grammar?.issue).trim();
+  const corrected = textValue(grammar?.corrected).trim();
   if (!issue) return null;
 
   return (
@@ -115,13 +204,13 @@ function GrammarNote({ grammar }: Pick<Partial<Explanation>, "grammar">) {
 }
 
 /** 术语 + 说明的成对列表，句子模式的难点和翻译模式的选词都是这个形状。 */
-function TermRows({ items }: { items: { term: string; note: string }[] }) {
+function TermRows({ items }: { items: UnknownRecord[] }) {
   return (
     <ul className="rows">
       {items.map((item, i) => (
         <li key={i}>
-          <span className="rows__term">{item.term}</span>
-          <span className="rows__note">{item.note}</span>
+          <span className="rows__term">{textValue(item.term)}</span>
+          <span className="rows__note">{textValue(item.note)}</span>
         </li>
       ))}
     </ul>
@@ -129,20 +218,24 @@ function TermRows({ items }: { items: { term: string; note: string }[] }) {
 }
 
 function SentenceBody({ grammar, translation, structure, keyPoints }: Partial<Explanation>) {
+  const translationText = textValue(translation);
+  const structureText = textValue(structure);
+  const points = objectItems(keyPoints);
+
   return (
     <>
       <GrammarNote grammar={grammar} />
 
-      {translation && (
+      {translationText && (
         <Panel tone="ok" icon={<IconTranslate />} title="中文翻译">
-          <p className="card__sense">{translation}</p>
+          <p className="card__sense">{translationText}</p>
         </Panel>
       )}
 
-      {(structure || !!keyPoints?.length) && (
+      {(structureText || points.length > 0) && (
         <Panel tone="accent" icon={<IconStructure />} title="语法解析">
-          {structure && <p className="card__grammar-issue">{structure}</p>}
-          {!!keyPoints?.length && <TermRows items={keyPoints} />}
+          {structureText && <p className="card__grammar-issue">{structureText}</p>}
+          {points.length > 0 && <TermRows items={points} />}
         </Panel>
       )}
     </>
@@ -155,36 +248,43 @@ function SentenceBody({ grammar, translation, structure, keyPoints }: Partial<Ex
  * 这里没有 GrammarNote——原文本来就不是英文。
  */
 function TranslateBody({ english, wordChoice, alternatives }: Partial<Explanation>) {
+  const englishText = textValue(english);
+  const choices = objectItems(wordChoice);
+  const alternativesList = objectItems(alternatives);
+
   return (
     <>
-      {english && (
+      {englishText && (
         <Panel tone="ok" icon={<IconTranslate />} title="英文表达">
-          <p className="card__english">{english}</p>
+          <p className="card__english">{englishText}</p>
         </Panel>
       )}
 
-      {!!wordChoice?.length && (
+      {choices.length > 0 && (
         <Panel tone="accent" icon={<IconKey />} title="选词解析">
           <div className="keygrid">
-            {wordChoice.map((point, i) => (
+            {choices.map((point, i) => (
               <div key={i} className="keycard">
-                <p className="keycard__term">{point.term}</p>
-                <p className="keycard__note">{point.note}</p>
+                <p className="keycard__term">{textValue(point.term)}</p>
+                <p className="keycard__note">{textValue(point.note)}</p>
               </div>
             ))}
           </div>
         </Panel>
       )}
 
-      {!!alternatives?.length && (
+      {alternativesList.length > 0 && (
         <Panel tone="plain" icon={<IconSwap />} title="其他说法">
           <ul className="card__alternatives">
-            {alternatives.map((alt, i) => (
-              <li key={i}>
-                <p className="card__alt-text">{alt.text}</p>
-                {alt.when && <p className="card__alt-when">{alt.when}</p>}
-              </li>
-            ))}
+            {alternativesList.map((alt, i) => {
+              const when = textValue(alt.when);
+              return (
+                <li key={i}>
+                  <p className="card__alt-text">{textValue(alt.text)}</p>
+                  {when && <p className="card__alt-when">{when}</p>}
+                </li>
+              );
+            })}
           </ul>
         </Panel>
       )}
@@ -203,38 +303,45 @@ function WordBody({
 }: Partial<Explanation>) {
   // 提示词没规定音标带不带斜杠，模型两种都给。统一剥掉再由我们包，
   // 否则自带斜杠的会显示成 //rɪˈzɪliənt//。
-  const barePhonetic = phonetic?.trim().replace(/^\/+|\/+$/g, "");
+  const barePhonetic = textValue(phonetic).trim().replace(/^\/+|\/+$/g, "");
+  const posText = textValue(pos);
+  const senseText = textValue(senseHere);
+  const whyText = textValue(why);
+  const collocationList = stringItems(collocations);
+  const exampleRecord = exampleValue(example);
+  const exampleEn = textValue(exampleRecord?.en);
+  const exampleZh = textValue(exampleRecord?.zh);
 
   return (
     <>
       <GrammarNote grammar={grammar} />
 
-      {(barePhonetic || pos) && (
+      {(barePhonetic || posText) && (
         <p className="card__meta">
           {barePhonetic && <span className="card__phonetic">/{barePhonetic}/</span>}
-          {pos && <span className="card__pos">{pos}</span>}
+          {posText && <span className="card__pos">{posText}</span>}
         </p>
       )}
 
-      {(senseHere || why || !!collocations?.length) && (
+      {(senseText || whyText || collocationList.length > 0) && (
         <Panel tone="ok" icon={<IconTranslate />} title="这里的意思">
-          {senseHere && <p className="card__sense">{senseHere}</p>}
-          {why && <p className="card__why">{why}</p>}
+          {senseText && <p className="card__sense">{senseText}</p>}
+          {whyText && <p className="card__why">{whyText}</p>}
 
-          {!!collocations?.length && (
+          {collocationList.length > 0 && (
             <ul className="card__collocations">
-              {collocations.map((c, i) => (
-                <li key={i}>{c}</li>
+              {collocationList.map((collocation, i) => (
+                <li key={i}>{collocation}</li>
               ))}
             </ul>
           )}
         </Panel>
       )}
 
-      {example?.en && (
+      {exampleEn && (
         <Panel tone="accent" icon={<IconQuote />} title="例句">
-          <p className="card__example-en">{example.en}</p>
-          {example.zh && <p className="card__example-zh">{example.zh}</p>}
+          <p className="card__example-en">{exampleEn}</p>
+          {exampleZh && <p className="card__example-zh">{exampleZh}</p>}
         </Panel>
       )}
     </>

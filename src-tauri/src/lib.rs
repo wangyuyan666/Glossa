@@ -152,7 +152,8 @@ fn explain(
         .resolve(Role::Fast)
         .ok_or("尚未配置「释义」模型，请先到设置里配置")?;
 
-    let template = settings.template(prompts::kind_for(&text));
+    // 分类由统一释义模板在同一次调用里完成；Rust 不再用词数或标点预判。
+    let template = settings.template(TemplateKind::Explain);
     let req = ChatRequest {
         model: model.to_string(),
         system: Some(templates::render(
@@ -332,22 +333,30 @@ fn check_template(kind: TemplateKind, body: String) -> Vec<TemplateIssue> {
     templates::check(kind, &body)
 }
 
-/// 「实测一次」的结果。
+/// 一条固定样例的实测结果。
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct TemplateProbeCase {
+    label: String,
+    input: String,
+    expected_mode: Option<String>,
+    actual_mode: Option<String>,
+    raw: String,
+    parsed: bool,
+    missing_fields: Vec<String>,
+    type_errors: Vec<String>,
+    unexpected_fields: Vec<String>,
+    passed: bool,
+}
+
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 struct TemplateProbe {
-    /// 模型的原始输出，让用户肉眼判断质量。
-    raw: String,
-    /// 释义类是否解析出了合法 JSON。对话类恒为 true（本来就没有格式要求）。
-    parsed: bool,
-    /// 契约里有、但模型没输出的字段。
-    missing_fields: Vec<String>,
+    passed: bool,
+    cases: Vec<TemplateProbeCase>,
 }
 
-/// 实测：拿固定样例真发一次请求。
-///
-/// 静态检查只能防拼写错误，**「模型不听你的」只有实测能发现**——那是自定义提示词
-/// 最常见的失败方式。所以这不是锦上添花，是用户唯一的自查手段。
+/// 实测：统一释义跑 word / sentence / translate 三个固定样例；对话和旧版模板跑一个。
 #[tauri::command]
 async fn probe_template(
     app: AppHandle,
@@ -355,48 +364,203 @@ async fn probe_template(
     body: String,
 ) -> Result<TemplateProbe, String> {
     let settings = config::load(&app);
-    // 释义类用 fast 角色，对话类用 chat 角色，和真实调用保持一致。
-    let role = match kind {
-        TemplateKind::Chat => Role::Chat,
-        _ => Role::Fast,
+    let role = if kind == TemplateKind::Chat {
+        Role::Chat
+    } else {
+        Role::Fast
     };
     let (provider, model) = settings
         .resolve(role)
         .ok_or("尚未配置模型，请先在上方配置并绑定角色")?;
 
-    let user = match kind {
-        TemplateKind::Chat => prompts::probe_input(kind).to_string(),
-        _ => prompts::explain_user(prompts::probe_input(kind), None),
-    };
+    let mut cases = Vec::new();
+    for probe in prompts::probe_cases(kind) {
+        let user = if kind == TemplateKind::Chat {
+            probe.input.to_string()
+        } else {
+            prompts::explain_user(probe.input, None)
+        };
+        let req = ChatRequest {
+            model: model.to_string(),
+            system: Some(templates::render(&body, &settings.native_language, None)),
+            messages: vec![ChatMessage {
+                role: "user".into(),
+                content: user,
+            }],
+            max_tokens: provider.max_tokens_or(if kind == TemplateKind::Chat {
+                DEFAULT_CHAT_MAX_TOKENS
+            } else {
+                DEFAULT_EXPLAIN_MAX_TOKENS
+            }),
+            temperature: if kind == TemplateKind::Chat { 0.6 } else { 0.2 },
+        };
 
-    let req = ChatRequest {
-        model: model.to_string(),
-        system: Some(templates::render(&body, &settings.native_language, None)),
-        messages: vec![ChatMessage {
-            role: "user".into(),
-            content: user,
-        }],
-        max_tokens: provider.max_tokens_or(DEFAULT_EXPLAIN_MAX_TOKENS),
-        temperature: 0.2,
-    };
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Delta>(64);
+        let stream = llm::stream(provider, req, tx);
+        let (result, raw) = tokio::join!(stream, collect_text(&mut rx));
+        result.map_err(|e| e.to_string())?;
+        cases.push(evaluate_probe_case(
+            kind,
+            probe.label,
+            probe.input,
+            probe.expected_mode,
+            raw,
+        ));
+    }
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Delta>(64);
-    let stream = llm::stream(provider, req, tx);
-    let (result, raw) = tokio::join!(stream, collect_text(&mut rx));
-    result.map_err(|e| e.to_string())?;
-
-    Ok(evaluate_probe(kind, raw))
+    Ok(TemplateProbe {
+        passed: cases.iter().all(|case| case.passed),
+        cases,
+    })
 }
 
-/// 把模型输出对着字段契约核一遍。抽出来是为了能脱离网络做单测。
-fn evaluate_probe(kind: TemplateKind, raw: String) -> TemplateProbe {
-    let required = templates::required_fields(kind);
-    if required.is_empty() {
-        // 对话类没有契约，拿到内容就算通过。
-        return TemplateProbe {
-            parsed: !raw.trim().is_empty(),
+fn validate_string_field(value: &serde_json::Value, field: &str, errors: &mut Vec<String>) {
+    if value.get(field).is_some_and(|value| !value.is_string()) {
+        errors.push(format!("{field} 应为字符串"));
+    }
+}
+
+fn validate_object_field(
+    value: &serde_json::Value,
+    field: &str,
+    subfields: &[&str],
+    errors: &mut Vec<String>,
+) {
+    let Some(item) = value.get(field) else { return };
+    let Some(object) = item.as_object() else {
+        errors.push(format!("{field} 应为对象"));
+        return;
+    };
+    for subfield in subfields {
+        if !object.get(*subfield).is_some_and(|value| value.is_string()) {
+            errors.push(format!("{field}.{subfield} 应为字符串"));
+        }
+    }
+}
+
+fn validate_array_field(
+    value: &serde_json::Value,
+    field: &str,
+    subfields: Option<&[&str]>,
+    errors: &mut Vec<String>,
+) {
+    let Some(item) = value.get(field) else { return };
+    let Some(items) = item.as_array() else {
+        errors.push(format!("{field} 应为数组"));
+        return;
+    };
+    for (index, item) in items.iter().enumerate() {
+        match subfields {
+            None if !item.is_string() => errors.push(format!("{field}[{index}] 应为字符串")),
+            Some(subfields) => {
+                let Some(object) = item.as_object() else {
+                    errors.push(format!("{field}[{index}] 应为对象"));
+                    continue;
+                };
+                for subfield in subfields {
+                    if !object.get(*subfield).is_some_and(|value| value.is_string()) {
+                        errors.push(format!("{field}[{index}].{subfield} 应为字符串"));
+                    }
+                }
+            }
+            None => {}
+        }
+    }
+}
+
+fn validate_probe_types(mode: &str, value: &serde_json::Value) -> Vec<String> {
+    let mut errors = Vec::new();
+    if matches!(mode, "word" | "sentence") {
+        if let Some(grammar) = value.get("grammar").and_then(|value| value.as_object()) {
+            let issue = grammar
+                .get("issue")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .trim();
+            let corrected = grammar
+                .get("corrected")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .trim();
+            if issue.is_empty() != corrected.is_empty() {
+                errors.push("grammar.issue 与 grammar.corrected 应同时填写或同时留空".into());
+            }
+        }
+    }
+    match mode {
+        "word" => {
+            for field in ["word", "phonetic", "pos", "senseHere", "why"] {
+                validate_string_field(value, field, &mut errors);
+            }
+            validate_object_field(value, "grammar", &["issue", "corrected"], &mut errors);
+            validate_array_field(value, "collocations", None, &mut errors);
+            validate_object_field(value, "example", &["en", "zh"], &mut errors);
+        }
+        "sentence" => {
+            for field in ["translation", "structure"] {
+                validate_string_field(value, field, &mut errors);
+            }
+            validate_object_field(value, "grammar", &["issue", "corrected"], &mut errors);
+            validate_array_field(value, "keyPoints", Some(&["term", "note"]), &mut errors);
+        }
+        "translate" => {
+            validate_string_field(value, "english", &mut errors);
+            validate_array_field(value, "wordChoice", Some(&["term", "note"]), &mut errors);
+            validate_array_field(value, "alternatives", Some(&["text", "when"]), &mut errors);
+        }
+        _ => {}
+    }
+    errors
+}
+
+fn unexpected_probe_fields(mode: &str, value: &serde_json::Value) -> Vec<String> {
+    let forbidden: Vec<&str> = match mode {
+        "word" => templates::sentence_fields()
+            .iter()
+            .copied()
+            .chain(templates::translate_fields().iter().copied())
+            .collect(),
+        "sentence" => templates::word_fields()
+            .iter()
+            .copied()
+            .chain(templates::translate_fields().iter().copied())
+            .collect(),
+        "translate" => templates::word_fields()
+            .iter()
+            .copied()
+            .chain(templates::sentence_fields().iter().copied())
+            .chain(["grammar"])
+            .collect(),
+        _ => Vec::new(),
+    };
+    forbidden
+        .into_iter()
+        .filter(|field| value.get(*field).is_some())
+        .map(str::to_string)
+        .collect()
+}
+
+/// 把一条模型输出对着模式与字段契约核一遍。抽出来供单测使用。
+fn evaluate_probe_case(
+    kind: TemplateKind,
+    label: &str,
+    input: &str,
+    expected_mode: Option<&str>,
+    raw: String,
+) -> TemplateProbeCase {
+    if kind == TemplateKind::Chat {
+        let passed = !raw.trim().is_empty();
+        return TemplateProbeCase {
+            label: label.into(),
+            input: input.into(),
+            expected_mode: None,
+            actual_mode: None,
             raw,
+            parsed: passed,
             missing_fields: Vec::new(),
+            type_errors: Vec::new(),
+            unexpected_fields: Vec::new(),
+            passed,
         };
     }
 
@@ -407,24 +571,107 @@ fn evaluate_probe(kind: TemplateKind, raw: String) -> TemplateProbe {
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
+    let parsed = serde_json::from_str::<serde_json::Value>(trimmed);
 
-    match serde_json::from_str::<serde_json::Value>(trimmed) {
+    match parsed {
         Ok(value) => {
-            let missing = required
+            let actual_mode = value
+                .get("mode")
+                .and_then(|mode| mode.as_str())
+                .map(str::to_string);
+            let required = if kind == TemplateKind::Explain {
+                actual_mode
+                    .as_deref()
+                    .map(templates::fields_for_mode)
+                    .unwrap_or_default()
+            } else {
+                templates::required_fields(kind)
+            };
+            let mut missing_fields: Vec<String> = required
                 .iter()
                 .filter(|field| value.get(**field).is_none())
                 .map(|field| field.to_string())
                 .collect();
-            TemplateProbe {
+            if kind == TemplateKind::Explain
+                && matches!(actual_mode.as_deref(), Some("word" | "sentence"))
+            {
+                match value.get("grammar").and_then(|grammar| grammar.as_object()) {
+                    None => missing_fields.push("grammar".into()),
+                    Some(grammar) => {
+                        if !grammar.contains_key("issue") {
+                            missing_fields.push("grammar.issue".into());
+                        }
+                        if !grammar.contains_key("corrected") {
+                            missing_fields.push("grammar.corrected".into());
+                        }
+                    }
+                }
+            }
+            if kind == TemplateKind::Explain && actual_mode.is_none() {
+                missing_fields.insert(0, "mode".into());
+            }
+            let validation_mode = if kind == TemplateKind::Explain {
+                actual_mode.as_deref()
+            } else {
+                match kind {
+                    TemplateKind::Word => Some("word"),
+                    TemplateKind::Sentence => Some("sentence"),
+                    TemplateKind::Translate => Some("translate"),
+                    _ => None,
+                }
+            };
+            let mut type_errors = validation_mode
+                .map(|mode| validate_probe_types(mode, &value))
+                .unwrap_or_default();
+            if kind == TemplateKind::Explain && value.get("mode").is_some() && actual_mode.is_none()
+            {
+                type_errors.insert(0, "mode 应为字符串".into());
+            }
+            let unexpected_fields = if kind == TemplateKind::Explain {
+                validation_mode
+                    .map(|mode| unexpected_probe_fields(mode, &value))
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            let mode_matches = expected_mode
+                .map(|expected| actual_mode.as_deref() == Some(expected))
+                .unwrap_or(true);
+            let passed = missing_fields.is_empty()
+                && type_errors.is_empty()
+                && unexpected_fields.is_empty()
+                && mode_matches;
+            TemplateProbeCase {
+                label: label.into(),
+                input: input.into(),
+                expected_mode: expected_mode.map(str::to_string),
+                actual_mode,
                 raw,
                 parsed: true,
-                missing_fields: missing,
+                missing_fields,
+                type_errors,
+                unexpected_fields,
+                passed,
             }
         }
-        Err(_) => TemplateProbe {
+        Err(_) => TemplateProbeCase {
+            label: label.into(),
+            input: input.into(),
+            expected_mode: expected_mode.map(str::to_string),
+            actual_mode: None,
             raw,
             parsed: false,
-            missing_fields: required.iter().map(|f| f.to_string()).collect(),
+            missing_fields: if kind == TemplateKind::Explain {
+                vec!["mode".into()]
+            } else {
+                templates::required_fields(kind)
+                    .iter()
+                    .map(|field| field.to_string())
+                    .collect()
+            },
+            type_errors: Vec::new(),
+            unexpected_fields: Vec::new(),
+            passed: false,
         },
     }
 }
@@ -585,53 +832,118 @@ pub fn run() {
 mod tests {
     use super::*;
 
-    #[test]
-    fn probe_reports_missing_fields() {
-        let probe = evaluate_probe(
-            TemplateKind::Sentence,
-            r#"{"translation":"译文"}"#.to_string(),
-        );
-        assert!(probe.parsed);
-        assert_eq!(probe.missing_fields, vec!["structure", "keyPoints"]);
+    fn evaluate(kind: TemplateKind, expected: Option<&str>, raw: &str) -> TemplateProbeCase {
+        evaluate_probe_case(kind, "测试", "输入", expected, raw.to_string())
     }
 
     #[test]
-    fn probe_accepts_a_complete_response() {
-        let probe = evaluate_probe(
-            TemplateKind::Sentence,
-            r#"{"translation":"a","structure":"b","keyPoints":[]}"#.to_string(),
+    fn unified_probe_accepts_the_expected_mode_and_branch() {
+        let probe = evaluate(
+            TemplateKind::Explain,
+            Some("sentence"),
+            r#"{"mode":"sentence","grammar":{"issue":"","corrected":""},"translation":"a","structure":"b","keyPoints":[]}"#,
+        );
+        assert!(probe.passed);
+        assert_eq!(probe.actual_mode.as_deref(), Some("sentence"));
+    }
+
+    #[test]
+    fn unified_probe_rejects_the_wrong_mode_even_when_that_branch_is_complete() {
+        let probe = evaluate(
+            TemplateKind::Explain,
+            Some("sentence"),
+            r#"{"mode":"word","word":"x","phonetic":"","pos":"n.","senseHere":"x","why":"x","collocations":[],"example":{"en":"x","zh":"x"}}"#,
         );
         assert!(probe.parsed);
-        assert!(probe.missing_fields.is_empty());
+        assert!(!probe.passed);
+        assert_eq!(probe.actual_mode.as_deref(), Some("word"));
+    }
+
+    #[test]
+    fn unified_probe_reports_missing_branch_fields() {
+        let probe = evaluate(
+            TemplateKind::Explain,
+            Some("sentence"),
+            r#"{"mode":"sentence","translation":"译文"}"#,
+        );
+        assert_eq!(
+            probe.missing_fields,
+            vec!["structure", "keyPoints", "grammar"]
+        );
+        assert!(!probe.passed);
+    }
+
+    #[test]
+    fn unified_probe_checks_grammar_subfields_for_english_modes() {
+        let probe = evaluate(
+            TemplateKind::Explain,
+            Some("word"),
+            r#"{"mode":"word","grammar":{"issue":""},"word":"x","phonetic":"","pos":"n.","senseHere":"x","why":"x","collocations":[],"example":{"en":"x","zh":"x"}}"#,
+        );
+        assert_eq!(probe.missing_fields, vec!["grammar.corrected"]);
+        assert!(!probe.passed);
+    }
+
+    #[test]
+    fn unified_probe_requires_grammar_values_to_be_paired() {
+        let probe = evaluate(
+            TemplateKind::Explain,
+            Some("sentence"),
+            r#"{"mode":"sentence","grammar":{"issue":"有错误","corrected":""},"translation":"a","structure":"b","keyPoints":[]}"#,
+        );
+        assert_eq!(
+            probe.type_errors,
+            vec!["grammar.issue 与 grammar.corrected 应同时填写或同时留空"]
+        );
+        assert!(!probe.passed);
+    }
+
+    #[test]
+    fn unified_probe_rejects_wrong_field_types() {
+        let probe = evaluate(
+            TemplateKind::Explain,
+            Some("sentence"),
+            r#"{"mode":"sentence","grammar":{"issue":"","corrected":""},"translation":[],"structure":"b","keyPoints":[]}"#,
+        );
+        assert_eq!(probe.type_errors, vec!["translation 应为字符串"]);
+        assert!(!probe.passed);
+    }
+
+    #[test]
+    fn unified_probe_rejects_fields_from_other_branches() {
+        let probe = evaluate(
+            TemplateKind::Explain,
+            Some("sentence"),
+            r#"{"mode":"sentence","grammar":{"issue":"","corrected":""},"translation":"a","structure":"b","keyPoints":[],"senseHere":"错误分支"}"#,
+        );
+        assert_eq!(probe.unexpected_fields, vec!["senseHere"]);
+        assert!(!probe.passed);
     }
 
     #[test]
     fn probe_strips_code_fences_like_the_real_path_does() {
-        let probe = evaluate_probe(
-            TemplateKind::Sentence,
-            "```json\n{\"translation\":\"a\",\"structure\":\"b\",\"keyPoints\":[]}\n```"
-                .to_string(),
+        let probe = evaluate(
+            TemplateKind::Explain,
+            Some("sentence"),
+            "```json\n{\"mode\":\"sentence\",\"grammar\":{\"issue\":\"\",\"corrected\":\"\"},\"translation\":\"a\",\"structure\":\"b\",\"keyPoints\":[]}\n```",
         );
-        assert!(probe.parsed, "裹了代码块也该判成功: {:?}", probe.raw);
+        assert!(probe.passed, "裹了代码块也该判成功: {:?}", probe.raw);
     }
 
     #[test]
     fn probe_flags_output_that_is_not_json_at_all() {
-        // 用户把释义模板写成了自由文本要求——这正是实测要抓的那类失败。
-        let probe = evaluate_probe(TemplateKind::Word, "take on 的意思是承担。".to_string());
+        let probe = evaluate(
+            TemplateKind::Explain,
+            Some("word"),
+            "take on 的意思是承担。",
+        );
         assert!(!probe.parsed);
-        assert_eq!(probe.missing_fields.len(), 7);
+        assert!(!probe.passed);
     }
 
     #[test]
-    fn chat_probe_has_no_contract() {
-        let probe = evaluate_probe(TemplateKind::Chat, "随便一段回答".to_string());
-        assert!(probe.parsed);
-        assert!(probe.missing_fields.is_empty());
-    }
-
-    #[test]
-    fn chat_probe_fails_on_empty_output() {
-        assert!(!evaluate_probe(TemplateKind::Chat, "   ".to_string()).parsed);
+    fn chat_probe_has_no_contract_but_must_not_be_empty() {
+        assert!(evaluate(TemplateKind::Chat, None, "随便一段回答").passed);
+        assert!(!evaluate(TemplateKind::Chat, None, "   ").passed);
     }
 }

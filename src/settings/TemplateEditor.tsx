@@ -17,7 +17,7 @@ interface Props {
 
 const VARIABLE_HELP: Record<string, string> = {
   nativeLanguage: "解释语言，取「通用」里配的值",
-  context: "选中词所在的原句；没有时替换成空串。通常不需要——选中的内容本身在用户消息里发",
+  context: "选中内容所在的原句；没有时替换成空串。通常不需要——选中内容本身在用户消息里发",
 };
 
 /** 编辑一个用户模板：正文、静态检查、实测。 */
@@ -84,7 +84,7 @@ export function TemplateEditor({ template, variables, onChange, onClose }: Props
           ))}
         </dl>
         <p className="muted">
-          选中的词或句子<strong>不是</strong>变量——它在用户消息里发，模板只负责「怎么解释」。
+          选中的内容<strong>不是</strong>变量——它在用户消息里发，模板只负责判断模式和组织回答。
         </p>
       </details>
 
@@ -97,10 +97,12 @@ export function TemplateEditor({ template, variables, onChange, onClose }: Props
 
       <div className="editor__actions">
         <button type="button" onClick={() => void runProbe()} disabled={probing}>
-          {probing ? "实测中…" : "实测一次"}
+          {probing ? "实测中…" : template.kind === "explain" ? "实测三类" : "实测一次"}
         </button>
         <span className="muted">
-          用固定样例真发一次请求。静态检查抓不到「模型不听你的」，只有实测能。
+          {template.kind === "explain"
+            ? "分别测试短语、短句和中文，验证模型会自行选对模式。"
+            : "用固定样例真发请求。静态检查抓不到「模型不听你的」，只有实测能。"}
         </span>
       </div>
 
@@ -108,15 +110,40 @@ export function TemplateEditor({ template, variables, onChange, onClose }: Props
 
       {probe && (
         <div className="probe">
-          <p className={`status status--${probe.parsed ? "ok" : "fail"}`}>
-            {probe.parsed ? "✓ 输出可用" : "✗ 没解析出合法 JSON"}
+          <p className={`status status--${probe.passed ? "ok" : "fail"}`}>
+            {probe.passed ? "✓ 全部样例通过" : "✗ 有样例未通过"}
           </p>
-          {probe.missingFields.length > 0 && (
-            <p className="status status--fail">
-              缺少字段：{probe.missingFields.join("、")}。释义卡片会缺掉对应部分
-            </p>
-          )}
-          <pre className="probe__raw">{probe.raw}</pre>
+          {probe.cases.map((result) => (
+            <div key={`${result.label}-${result.input}`} className="probe__case">
+              <p className={`status status--${result.passed ? "ok" : "fail"}`}>
+                {result.passed ? "✓" : "✗"} {result.label}：{result.input}
+              </p>
+              {!result.parsed && (
+                <p className="status status--fail">没解析出合法 JSON</p>
+              )}
+              {result.expectedMode && result.actualMode !== result.expectedMode && (
+                <p className="status status--fail">
+                  模式应为 {result.expectedMode}，实际为 {result.actualMode ?? "缺失"}
+                </p>
+              )}
+              {result.missingFields.length > 0 && (
+                <p className="status status--fail">
+                  缺少字段：{result.missingFields.join("、")}
+                </p>
+              )}
+              {result.typeErrors.length > 0 && (
+                <p className="status status--fail">
+                  类型错误：{result.typeErrors.join("；")}
+                </p>
+              )}
+              {result.unexpectedFields.length > 0 && (
+                <p className="status status--fail">
+                  不应包含其他分支字段：{result.unexpectedFields.join("、")}
+                </p>
+              )}
+              <pre className="probe__raw">{result.raw}</pre>
+            </div>
+          ))}
         </div>
       )}
     </div>

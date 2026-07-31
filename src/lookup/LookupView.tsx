@@ -3,18 +3,19 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import * as api from "../lib/api";
-import { ExplanationCard, modeOf } from "./ExplanationCard";
+import {
+  detectedMode,
+  ExplanationCard,
+  hasRenderableExplanation,
+} from "./ExplanationCard";
 import { ThinkingNote } from "./ThinkingNote";
 import type { useLookup } from "./useLookup";
 
-/**
- * 判定用了哪套提示词是在 Rust 侧做的，前端看不到结果，只能从回来的字段反推。
- * 告诉用户「它被当成什么处理了」——查一个词却走了句子模板时，这是唯一的线索。
- */
+/** 模式由统一释义模型返回；旧历史没有 mode 时由卡片字段回退推断。 */
 const MODE_LABELS = {
-  word: "检测为单词或短语",
-  sentence: "检测为英文句子",
-  translate: "检测为非英文，译成英文",
+  word: "单词 / 短语释义",
+  sentence: "英文句子释义",
+  translate: "译成英文",
 } as const;
 
 interface Props {
@@ -37,8 +38,10 @@ export function LookupView({ lookup, idleHint }: Props) {
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight });
   }, [explanation, turns, answering]);
 
-  /** 释义流还在思考、正文一个字都没到的时候才显示——正文一来它就不该占地方了。 */
-  const thinkingBeforeExplanation = phase === "explaining" && !explanation;
+  /** mode 本身不是正文；至少有一块可见内容后才撤掉思考提示。 */
+  const thinkingBeforeExplanation =
+    phase === "explaining" && !hasRenderableExplanation(explanation);
+  const displayMode = detectedMode(explanation);
 
   return (
     <div className="lookup" ref={bodyRef}>
@@ -49,8 +52,8 @@ export function LookupView({ lookup, idleHint }: Props) {
       {phase !== "idle" && word && (
         <header className="result__head">
           <h1 className="result__title">{word}</h1>
-          {/* 字段还没到齐时不显示：这时候推断出来的模式可能是错的。 */}
-          {explanation && <span className="badge">{MODE_LABELS[modeOf(explanation)]}</span>}
+          {/* mode 或独有字段还没到时不显示，避免流式开头先闪成默认 word。 */}
+          {displayMode && <span className="badge">{MODE_LABELS[displayMode]}</span>}
         </header>
       )}
 

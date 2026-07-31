@@ -1,6 +1,6 @@
 //! 提示词模板。
 //!
-//! 四类模板各自独立选用：用户想只改释义风格、保留默认对话，不该被迫连对话一起写。
+//! 释义与追问两类模板独立选用。释义模板由模型自行判断单词、句子或译成英文。
 //!
 //! **内置模板留在代码里，不写进 `settings.json`**，配置只记「当前选了哪个 id」。
 //! 内置提示词以后还会改（比如又发现一类输出 bug），把副本存进用户配置的话，
@@ -11,18 +11,29 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum TemplateKind {
-    /// 单词 / 短语释义。输出 JSON，字段契约见 [`required_fields`]。
-    Word,
-    /// 整句释义。输出 JSON。
-    Sentence,
-    /// 选中内容不是英文——当成「这句话英语怎么说」。输出 JSON。
-    Translate,
+    /// 统一释义。模型自行判断 word / sentence / translate，输出对应 JSON 分支。
+    Explain,
     /// 追问对话。自由文本，无字段契约。
     Chat,
+    /// 旧版模板类型。只为兼容已有 settings.json，不再参与真实释义分流。
+    Word,
+    /// 旧版模板类型。只保留用户内容，不再参与真实释义分流。
+    Sentence,
+    /// 旧版模板类型。只保留用户内容，不再参与真实释义分流。
+    Translate,
 }
 
 impl TemplateKind {
-    pub const ALL: [TemplateKind; 4] = [Self::Word, Self::Sentence, Self::Translate, Self::Chat];
+    /// 设置页可选、真实请求会使用的模板类型。
+    pub const SELECTABLE: [TemplateKind; 2] = [Self::Explain, Self::Chat];
+    /// 含旧版类型。用于清理历史内置副本及兼容测试。
+    pub const ALL: [TemplateKind; 5] = [
+        Self::Explain,
+        Self::Chat,
+        Self::Word,
+        Self::Sentence,
+        Self::Translate,
+    ];
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -38,10 +49,12 @@ pub struct PromptTemplate {
     pub builtin: bool,
 }
 
+pub const BUILTIN_EXPLAIN_ID: &str = "builtin-explain";
+pub const BUILTIN_CHAT_ID: &str = "builtin-chat";
+// 旧 id 仍参与 sanitize，防止旧 settings.json 里的内置副本被当作用户模板保存。
 pub const BUILTIN_WORD_ID: &str = "builtin-word";
 pub const BUILTIN_SENTENCE_ID: &str = "builtin-sentence";
 pub const BUILTIN_TRANSLATE_ID: &str = "builtin-translate";
-pub const BUILTIN_CHAT_ID: &str = "builtin-chat";
 
 /// 模板正文里可用的占位符。静态检查据此判定「未知变量」。
 pub const VARIABLES: [&str; 2] = ["nativeLanguage", "context"];
@@ -51,19 +64,22 @@ const LONG_BODY_CHARS: usize = 2000;
 
 pub fn builtin_id(kind: TemplateKind) -> &'static str {
     match kind {
+        TemplateKind::Explain => BUILTIN_EXPLAIN_ID,
+        TemplateKind::Chat => BUILTIN_CHAT_ID,
         TemplateKind::Word => BUILTIN_WORD_ID,
         TemplateKind::Sentence => BUILTIN_SENTENCE_ID,
         TemplateKind::Translate => BUILTIN_TRANSLATE_ID,
-        TemplateKind::Chat => BUILTIN_CHAT_ID,
     }
 }
 
 pub fn builtin(kind: TemplateKind) -> PromptTemplate {
     let (name, body) = match kind {
-        TemplateKind::Word => ("内置 · 单词释义", WORD_BODY),
-        TemplateKind::Sentence => ("内置 · 句子释义", SENTENCE_BODY),
-        TemplateKind::Translate => ("内置 · 译成英文", TRANSLATE_BODY),
+        TemplateKind::Explain => ("内置 · 统一释义", EXPLAIN_BODY),
         TemplateKind::Chat => ("内置 · 追问对话", CHAT_BODY),
+        // 旧版内置只用于兼容测试和识别历史 id，不再发给设置页，也不参与真实请求。
+        TemplateKind::Word => ("旧版内置 · 单词释义", WORD_BODY),
+        TemplateKind::Sentence => ("旧版内置 · 句子释义", SENTENCE_BODY),
+        TemplateKind::Translate => ("旧版内置 · 译成英文", TRANSLATE_BODY),
     };
     PromptTemplate {
         id: builtin_id(kind).to_string(),
@@ -75,25 +91,50 @@ pub fn builtin(kind: TemplateKind) -> PromptTemplate {
 }
 
 pub fn builtins() -> Vec<PromptTemplate> {
-    TemplateKind::ALL.iter().copied().map(builtin).collect()
+    TemplateKind::SELECTABLE
+        .iter()
+        .copied()
+        .map(builtin)
+        .collect()
 }
 
-/// 释义 JSON 必须带的字段。静态检查在正文里搜这些名字，实测则检查模型真的输出了它们。
+/// JSON 顶层必须带的字段。统一模板正文还会按各 mode 检查对应分支字段。
 pub fn required_fields(kind: TemplateKind) -> &'static [&'static str] {
     match kind {
-        TemplateKind::Word => &[
-            "word",
-            "phonetic",
-            "pos",
-            "senseHere",
-            "why",
-            "collocations",
-            "example",
-        ],
-        TemplateKind::Sentence => &["translation", "structure", "keyPoints"],
-        TemplateKind::Translate => &["english", "wordChoice", "alternatives"],
-        // 对话输出自由文本，没有契约。
+        TemplateKind::Explain => &["mode"],
+        TemplateKind::Word => word_fields(),
+        TemplateKind::Sentence => sentence_fields(),
+        TemplateKind::Translate => translate_fields(),
         TemplateKind::Chat => &[],
+    }
+}
+
+pub fn word_fields() -> &'static [&'static str] {
+    &[
+        "word",
+        "phonetic",
+        "pos",
+        "senseHere",
+        "why",
+        "collocations",
+        "example",
+    ]
+}
+
+pub fn sentence_fields() -> &'static [&'static str] {
+    &["translation", "structure", "keyPoints"]
+}
+
+pub fn translate_fields() -> &'static [&'static str] {
+    &["english", "wordChoice", "alternatives"]
+}
+
+pub fn fields_for_mode(mode: &str) -> &'static [&'static str] {
+    match mode {
+        "word" => word_fields(),
+        "sentence" => sentence_fields(),
+        "translate" => translate_fields(),
+        _ => &[],
     }
 }
 
@@ -145,6 +186,14 @@ impl TemplateIssue {
     }
 }
 
+fn mentions_field(body: &str, field: &str) -> bool {
+    let quoted = format!("\"{field}\"");
+    let json_key = body
+        .match_indices(&quoted)
+        .any(|(start, _)| body[start + quoted.len()..].trim_start().starts_with(':'));
+    json_key || body.contains(&format!("`{field}`"))
+}
+
 /// 静态检查：本地、免费、瞬时。
 ///
 /// 只能防低级错误（拼错变量、漏写字段名）。「模型不听话」这类问题静态检查发现不了，
@@ -173,10 +222,22 @@ pub fn check(kind: TemplateKind, body: &str) -> Vec<TemplateIssue> {
         )));
     }
 
-    let missing: Vec<&str> = required_fields(kind)
+    let required: Vec<&str> = if kind == TemplateKind::Explain {
+        required_fields(kind)
+            .iter()
+            .copied()
+            .chain(["grammar", "issue", "corrected"])
+            .chain(word_fields().iter().copied())
+            .chain(sentence_fields().iter().copied())
+            .chain(translate_fields().iter().copied())
+            .collect()
+    } else {
+        required_fields(kind).to_vec()
+    };
+    let missing: Vec<&str> = required
         .iter()
         .copied()
-        .filter(|field| !body.contains(field))
+        .filter(|field| !mentions_field(body, field))
         .collect();
     if !missing.is_empty() {
         issues.push(TemplateIssue::error(format!(
@@ -199,10 +260,52 @@ pub fn check(kind: TemplateKind, body: &str) -> Vec<TemplateIssue> {
 // 释义走结构化 JSON，但**不使用** `response_format: json_schema` 或 tool use——
 // 多数 OpenAI 兼容端点（Ollama、LM Studio、部分中转）不支持或行为不一致。
 //
-// 单词和句子是两套字段，别合成一套：句子走单词 schema 时，`word`（词条原形）/
-// `phonetic`/`pos` 会逼着模型从句子里挑一个词来填，症状就是「选了一整句却只翻译
-// 其中一个单词」。这是实际踩过的 bug。
+// 统一模板不是把三套字段全塞进同一个对象：模型先判断 mode，再只输出对应分支。
+// 如果要求所有字段齐全，word/phonetic/pos 仍会逼模型从整句或中文里硬挑一个词。
 
+const EXPLAIN_BODY: &str = r#"你是一位英语老师，帮助母语为{{nativeLanguage}}的学习者理解或表达语言。
+
+用户会给出一段选中的内容，并可能附带所在原句。先根据语言结构和用户实际意图判断模式，**不要按词数、字符数或是否有句末标点硬判**：
+- `word`：英文单词、固定搭配或名词短语，用户想知道它在语境中的意思。
+- `sentence`：英文完整话语、分句或可独立理解的表达；短问句、口语、省略句、缺标点或有拼写错误时仍可属于句子。
+- `translate`：内容主要不是英文，用户想知道地道英文怎么说。
+
+只输出一个 JSON 对象，不要输出解释性文字，不要包裹代码块。`mode` 必须是第一个字段，值只能是 `word`、`sentence`、`translate`。判断后只输出对应分支的字段，**不要补另外两个分支的键**。
+
+`word` 分支：结合所在原句解释此处义项；没有原句时给最常见义项。先检查选中内容的拼写、词形或搭配，有错写进 `grammar`，无错两项给空字符串。
+{
+  "mode": "word",
+  "grammar": { "issue": "用{{nativeLanguage}}说明错误；无错留空", "corrected": "改正后的英文；无错留空" },
+  "word": "词条原形",
+  "phonetic": "IPA 音标，不确定留空",
+  "pos": "词性缩写",
+  "senseHere": "用{{nativeLanguage}}给出此处含义，一句话",
+  "why": "用{{nativeLanguage}}说明语感或为什么在此处是这个意思",
+  "collocations": ["常见英文搭配，2 到 4 个"],
+  "example": { "en": "地道英文例句", "zh": "{{nativeLanguage}}翻译" }
+}
+
+`sentence` 分支：解释整段内容，**不许只挑其中一个单词讲**。先检查拼写和语法；有错给出改正后的完整表达，后续仍讲用户原文。
+{
+  "mode": "sentence",
+  "grammar": { "issue": "用{{nativeLanguage}}说明错误；无错留空", "corrected": "改正后的完整英文；无错留空" },
+  "translation": "完整、自然的{{nativeLanguage}}翻译",
+  "structure": "用{{nativeLanguage}}说明句子结构或关键语法，一到两句",
+  "keyPoints": [{ "term": "真正影响理解的原文词或短语", "note": "用{{nativeLanguage}}解释此处用法" }]
+}
+`keyPoints` 给 1 到 4 项；没有难点可给空数组。
+
+`translate` 分支：给一个母语者会自然说出口的英文版本，不要逐字直译。默认日常口语，原文明显正式或粗俗时跟随语气。`wordChoice` 解释地道搭配、近义词取舍或意译理由。
+{
+  "mode": "translate",
+  "english": "最地道的英文说法",
+  "wordChoice": [{ "term": "译文里的词或短语", "note": "用{{nativeLanguage}}说明为什么这样选词" }],
+  "alternatives": [{ "text": "实质不同的另一种完整说法", "when": "用{{nativeLanguage}}说明语气或场合差别" }]
+}
+
+对应分支的字段必须齐全。无法判断的字符串给空字符串，列表给空数组，不要省略该分支的键。"#;
+
+// 以下三份正文只为读取和保留旧版自定义模板、识别旧内置 id；真实释义不再使用。
 const WORD_BODY: &str = r#"你是一位英语老师，帮助母语为{{nativeLanguage}}的学习者理解英文词汇。
 
 用户会给出选中的词。如果同时给出了它所在的原句，你必须解释**这个词在该句中的具体含义**，而不是罗列全部义项，`why` 字段说明为什么在此处是这个意思；如果没有给出原句，给出最常见的义项，`why` 字段简述该词的核心语感或最典型的使用场景。
@@ -250,13 +353,8 @@ const SENTENCE_BODY: &str = r#"你是一位英语老师，帮助母语为{{nativ
 keyPoints 给 2 到 4 项，挑真正影响理解的难点，简单词不要罗列。
 字段必须齐全。无法判断的字段给空字符串或空数组，不要省略键。grammar 的两个子字段要么都填，要么都留空，不要只填一个。"#;
 
-// 选中内容不是英文时走这套（判定见 `prompts::looks_foreign`）。
-//
-// 它必须是**独立的第三套 schema**，不能塞进单词模板：中文没有空格，`is_sentence`
-// 数出来永远是 1 个词，中文一律落到单词模板，而 `word`/`phonetic`/`pos` 会逼模型
-// 从中文里挑个词标音标——和「整句只翻一个词」是同一类 bug。
-//
-// 也没有 `grammar`：原文本来就不是英文，纠英文语法无从谈起。
+// 旧版翻译正文。统一模板仍保留独立 translate 分支，且该分支不带 grammar：
+// 原文本来就不是英文，纠英文语法无从谈起。
 const TRANSLATE_BODY: &str = r#"你是一位英语老师，帮助母语为{{nativeLanguage}}的学习者把想说的话译成英文。
 
 用户给的内容不是英文，这说明他想知道「这句话英语怎么说」。**不要解释这段话的意思，也不要逐字直译。**
@@ -315,7 +413,23 @@ mod tests {
     }
 
     #[test]
-    fn word_and_sentence_schemas_stay_separate() {
+    fn settings_only_exposes_unified_explain_and_chat_builtins() {
+        let kinds: Vec<TemplateKind> = builtins().into_iter().map(|t| t.kind).collect();
+        assert_eq!(kinds, vec![TemplateKind::Explain, TemplateKind::Chat]);
+    }
+
+    #[test]
+    fn unified_template_delegates_classification_without_hardcoded_length_rules() {
+        let body = builtin(TemplateKind::Explain).body;
+        assert!(body.contains("不要按词数、字符数或是否有句末标点硬判"));
+        assert!(body.contains("\"mode\": \"word\""));
+        assert!(body.contains("\"mode\": \"sentence\""));
+        assert!(body.contains("\"mode\": \"translate\""));
+        assert!(body.contains("不要补另外两个分支的键"));
+    }
+
+    #[test]
+    fn legacy_word_and_sentence_schemas_stay_separate() {
         // 合成一套就会回到「整句只解释一个词」的 bug。
         let sentence = builtin(TemplateKind::Sentence).body;
         assert!(!sentence.contains("\"word\""));
@@ -326,7 +440,7 @@ mod tests {
     }
 
     #[test]
-    fn translate_schema_stays_separate_too() {
+    fn legacy_translate_schema_stays_separate_too() {
         // 借单词 schema 的话，`phonetic`/`pos` 会逼模型给中文标音标。
         let translate = builtin(TemplateKind::Translate).body;
         assert!(!translate.contains("\"phonetic\""));
@@ -336,9 +450,8 @@ mod tests {
     }
 
     #[test]
-    fn both_explain_templates_check_grammar() {
-        // 只加在句子模板上不够：`how's is goging today` 这种短错句被判成词组，
-        // 走的是单词模板，纠错就丢了。
+    fn both_legacy_english_branches_check_grammar() {
+        // 统一模板也延续该约束；这里锁住旧模板，保证用户保留的内容语义不变。
         for kind in [TemplateKind::Word, TemplateKind::Sentence] {
             assert!(
                 builtin(kind).body.contains("\"grammar\""),
@@ -387,11 +500,37 @@ mod tests {
 
     #[test]
     fn flags_missing_required_fields() {
-        let issues = check(TemplateKind::Sentence, "翻译一下，输出 translation 就行");
+        let issues = check(TemplateKind::Sentence, "翻译一下，输出 `translation` 就行");
         let message = &issues[0].message;
         assert!(message.contains("structure"));
         assert!(message.contains("keyPoints"));
         assert!(!message.contains("translation"));
+    }
+
+    #[test]
+    fn field_matching_requires_a_json_key_or_backticked_field_name() {
+        assert!(!mentions_field("model decides", "mode"));
+        assert!(!mentions_field("输出 mode 字段", "mode"));
+        assert!(mentions_field("输出 `mode` 字段", "mode"));
+        assert!(mentions_field(r#"{"mode":"word"}"#, "mode"));
+        assert!(!mentions_field(r#"{"kind":"mode"}"#, "mode"));
+        assert!(!mentions_field(r#"{"mode":"word"}"#, "word"));
+    }
+
+    #[test]
+    fn unified_check_requires_both_grammar_subfields() {
+        let body = builtin(TemplateKind::Explain)
+            .body
+            .replace("issue", "problem")
+            .replace("corrected", "fixed");
+        let issues = check(TemplateKind::Explain, &body);
+        let message = issues
+            .iter()
+            .find(|issue| issue.level == "error")
+            .map(|issue| issue.message.as_str())
+            .unwrap_or_default();
+        assert!(message.contains("issue"));
+        assert!(message.contains("corrected"));
     }
 
     #[test]
