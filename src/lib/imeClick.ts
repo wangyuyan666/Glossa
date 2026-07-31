@@ -32,8 +32,10 @@ export function installImeClickRecovery() {
       sawDown = false;
       if (paired || e.button !== 0) return;
 
+      // 用 Element 而不是 HTMLElement：内联 SVG 图标是 SVGElement，图标按钮的
+      // target 落在 <svg>/<path> 上，卡 HTMLElement 会把纯图标按钮全漏掉。
       const target = e.target;
-      if (!(target instanceof HTMLElement)) return;
+      if (!(target instanceof Element)) return;
 
       sawClick = false;
       // 退到下一个任务再补：浏览器若自己派发了 click，它会先到，这里就不该重复。
