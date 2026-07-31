@@ -146,12 +146,11 @@ export const IconCopy = svg(
   </>,
 );
 
+// 单圈圆形箭头。双弧双箭头在 16px 下笔画挤成一团，认不出是“刷新”。
 export const IconRefresh = svg(
   <>
-    <path d="M20 7v5h-5" />
-    <path d="M19.2 9A8 8 0 005.4 6.4L3 9" />
-    <path d="M4 17v-5h5" />
-    <path d="M4.8 15A8 8 0 0018.6 17.6L21 15" />
+    <path d="M20 12a8 8 0 11-2.34-5.66L20 8.5" />
+    <path d="M20 4v4.5h-4.5" />
   </>,
 );
 
