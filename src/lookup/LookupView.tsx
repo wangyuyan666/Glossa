@@ -8,6 +8,7 @@ import {
   ExplanationCard,
   hasRenderableExplanation,
 } from "./ExplanationCard";
+import { SpeakButton } from "./SpeakButton";
 import { ThinkingNote } from "./ThinkingNote";
 import type { useLookup } from "./useLookup";
 
@@ -52,6 +53,11 @@ export function LookupView({ lookup, idleHint }: Props) {
       {phase !== "idle" && word && (
         <header className="result__head">
           <h1 className="result__title">{word}</h1>
+          {/* 单词和句子都是选中原文本身要念的；翻译模式的原文不是英文，念了没用。
+              等 mode 到了再挂喇叭，免得先冒出来又缩回去。 */}
+          {(displayMode === "word" || displayMode === "sentence") && (
+            <SpeakButton text={word} label="朗读原文" />
+          )}
           {/* mode 或独有字段还没到时不显示，避免流式开头先闪成默认 word。 */}
           {displayMode && <span className="badge">{MODE_LABELS[displayMode]}</span>}
         </header>

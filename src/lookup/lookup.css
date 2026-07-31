@@ -33,6 +33,36 @@
   word-break: break-word;
 }
 
+/**
+ * 朗读按钮。它跟在正文后面，不是一个独立控件——按普通按钮那样带边框和底色的话，
+ * 例句末尾会突然长出一个方块，比它要传达的信息重得多。悬停时才补边框。
+ */
+.speak {
+  padding: 3px;
+  margin-left: 6px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--fg-muted);
+  /* 内联在句尾时跟着文字基线走，不是自己占一行 */
+  vertical-align: -3px;
+}
+
+.speak:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.speak--on {
+  color: var(--accent);
+}
+
+/* 标题是 21px、可能折行，所以按顶对齐后手动往下压一点，对上第一行的中线 */
+.result__head .speak {
+  margin-top: 3px;
+}
+
 .lookup__error p {
   color: var(--danger);
   margin: 0 0 8px;

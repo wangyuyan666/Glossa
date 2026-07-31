@@ -133,6 +133,95 @@
   grid-template-columns: 90px minmax(0, 300px);
 }
 
+/* 下拉 + 刷新 + 试听。下拉吃掉剩余宽度，两个按钮定宽贴在右边 */
+.voice-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-field .select-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.voice-field button {
+  flex: none;
+}
+
+/* 只有图标的那个按钮不要按文字按钮的左右内边距，否则是个空荡荡的长条 */
+.voice-field button:has(> .icon:only-child) {
+  padding: 6px 8px;
+}
+
+/**
+ * 滑块 + 读数。
+ *
+ * 原生 range 在 macOS 上是又粗又深的一条，摆在这张卡里比旁边的输入框还重，
+ * 所以轨道自己画：细轨 + 强调色填充已选区间 + 一个和输入框同款描边的圆钮。
+ * 行高对齐上面那行的下拉，两行才在同一套节奏上。
+ */
+.speech-rate {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+}
+
+.speech-rate input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  appearance: none;
+}
+
+/* 填充宽度由行内的 --fill 给，原生 range 没法只给已选那段上色 */
+.speech-rate input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background:
+    linear-gradient(var(--accent), var(--accent)) 0 / var(--fill, 0%) no-repeat,
+    var(--border-strong);
+}
+
+.speech-rate input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  /* (轨道 4px - 圆钮 14px) / 2，让圆钮压在轨道中线上 */
+  margin-top: -5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.12s;
+}
+
+.speech-rate input[type="range"]:hover::-webkit-slider-thumb,
+.speech-rate input[type="range"]:active::-webkit-slider-thumb {
+  border-color: var(--accent);
+}
+
+.speech-rate input[type="range"]:focus-visible {
+  outline: none;
+}
+
+.speech-rate input[type="range"]:focus-visible::-webkit-slider-thumb {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.speech-rate__value {
+  width: 46px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
 /* 文件路径很长，这条要占满 */
 .settings label.inline--wide {
   grid-template-columns: 90px minmax(0, 1fr);

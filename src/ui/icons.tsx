@@ -132,6 +132,15 @@ export const IconSwap = svg(
   </>,
 );
 
+/** 发音。音波只画两道——三道在 16px 下糊成一片实心块。 */
+export const IconSpeaker = svg(
+  <>
+    <path d="M11 5L6.5 8.5H3.5v7h3L11 19V5z" />
+    <path d="M14.8 9.6a3.4 3.4 0 010 4.8" />
+    <path d="M17.6 6.8a7.4 7.4 0 010 10.4" />
+  </>,
+);
+
 export const IconWarn = svg(
   <>
     <path d="M12 4.5l8.5 15H3.5L12 4.5z" />

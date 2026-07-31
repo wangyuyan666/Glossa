@@ -5,6 +5,7 @@ mod llm;
 mod popclip;
 mod prompts;
 mod server;
+mod speech;
 mod state;
 mod templates;
 mod windows;
@@ -816,14 +817,25 @@ pub fn run() {
             open_settings,
             open_main,
             close_settings,
+            speech::list_voices,
+            speech::speak,
+            speech::stop_speaking,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app, event| {
             // 点 Dock 图标要能把主窗口唤回来。窗口是隐藏不销毁的，
             // 没有这段的话关掉主窗口后就再也打不开了。
-            if let tauri::RunEvent::Reopen { .. } = event {
-                let _ = windows::show_main(app);
+            match event {
+                // 点 Dock 图标要能把主窗口唤回来。
+                tauri::RunEvent::Reopen { .. } => {
+                    let _ = windows::show_main(app);
+                }
+                // `say` 是独立进程，不掐掉的话 app 都退了声音还在念。
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+                    speech::shutdown(app);
+                }
+                _ => {}
             }
         });
 }

@@ -89,6 +89,11 @@ export interface Settings {
   activeSentence: string | null;
   activeTranslate: string | null;
   activeChat: string | null;
+
+  /** 朗读用的系统嗓子名，null 表示自动挑。名字只在本机有意义 */
+  voice: string | null;
+  /** 朗读语速，1 是正常速度 */
+  speechRate: number;
 }
 
 /** 侧栏列表项，不含对话内容 */
@@ -162,6 +167,14 @@ export interface Explanation {
   wordChoice: { term: string; note: string }[];
   /** 别的说法 + 适用场合 */
   alternatives: { text: string; when: string }[];
+}
+
+/** 系统里的一个嗓子，由 Rust 侧解析 `say -v '?'` 得来。 */
+export interface Voice {
+  /** `say -v` 认的名字，含 `(Premium)` 这类后缀。也是配置里存的唯一标识 */
+  name: string;
+  /** BCP-47，例如 en-US */
+  lang: string;
 }
 
 export interface ChatMessage {

@@ -9,6 +9,7 @@ import {
   IconSwap,
   IconTranslate,
 } from "../ui/icons";
+import { SpeakButton } from "./SpeakButton";
 
 interface Props {
   explanation: Partial<Explanation> | null;
@@ -20,6 +21,12 @@ interface Props {
 export type Mode = ExplanationMode;
 
 type UnknownRecord = Record<string, unknown>;
+
+/**
+ * 分支正文的 props。字段照旧整份摊开，另带一个 `streaming`——朗读按钮要靠它
+ * 判断文本长完了没有，念半句比没得念更糟。
+ */
+type BodyProps = Partial<Explanation> & { streaming: boolean };
 
 function textValue(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -175,11 +182,11 @@ export function ExplanationCard({ explanation, streaming, raw }: Props) {
   return (
     <div className={`card${streaming ? " card--streaming" : ""}`}>
       {mode === "translate" ? (
-        <TranslateBody {...explanation} />
+        <TranslateBody {...explanation} streaming={streaming} />
       ) : mode === "sentence" ? (
         <SentenceBody {...explanation} />
       ) : (
-        <WordBody {...explanation} />
+        <WordBody {...explanation} streaming={streaming} />
       )}
     </div>
   );
@@ -247,7 +254,12 @@ function SentenceBody({ grammar, translation, structure, keyPoints }: Partial<Ex
  *
  * 这里没有 GrammarNote——原文本来就不是英文。
  */
-function TranslateBody({ english, wordChoice, alternatives }: Partial<Explanation>) {
+function TranslateBody({
+  streaming,
+  english,
+  wordChoice,
+  alternatives,
+}: BodyProps) {
   const englishText = textValue(english);
   const choices = objectItems(wordChoice);
   const alternativesList = objectItems(alternatives);
@@ -256,7 +268,14 @@ function TranslateBody({ english, wordChoice, alternatives }: Partial<Explanatio
     <>
       {englishText && (
         <Panel tone="ok" icon={<IconTranslate />} title="英文表达">
-          <p className="card__english">{englishText}</p>
+          <p className="card__english">
+            {englishText}
+            <SpeakButton
+              text={englishText}
+              label="朗读英文表达"
+              disabled={streaming}
+            />
+          </p>
         </Panel>
       )}
 
@@ -293,6 +312,7 @@ function TranslateBody({ english, wordChoice, alternatives }: Partial<Explanatio
 }
 
 function WordBody({
+  streaming,
   grammar,
   phonetic,
   pos,
@@ -300,7 +320,7 @@ function WordBody({
   why,
   collocations,
   example,
-}: Partial<Explanation>) {
+}: BodyProps) {
   // 提示词没规定音标带不带斜杠，模型两种都给。统一剥掉再由我们包，
   // 否则自带斜杠的会显示成 //rɪˈzɪliənt//。
   const barePhonetic = textValue(phonetic).trim().replace(/^\/+|\/+$/g, "");
@@ -340,7 +360,10 @@ function WordBody({
 
       {exampleEn && (
         <Panel tone="accent" icon={<IconQuote />} title="例句">
-          <p className="card__example-en">{exampleEn}</p>
+          <p className="card__example-en">
+            {exampleEn}
+            <SpeakButton text={exampleEn} label="朗读例句" disabled={streaming} />
+          </p>
           {exampleZh && <p className="card__example-zh">{exampleZh}</p>}
         </Panel>
       )}

@@ -18,6 +18,7 @@ import {
 import { ModelCombobox } from "./ModelCombobox";
 import { PromptSection } from "./PromptSection";
 import { ProviderEditor } from "./ProviderEditor";
+import { SpeechSection } from "./SpeechSection";
 import "./settings.css";
 
 const EMPTY: SettingsData = {
@@ -32,6 +33,8 @@ const EMPTY: SettingsData = {
   activeSentence: null,
   activeTranslate: null,
   activeChat: null,
+  voice: null,
+  speechRate: 1,
 };
 
 const IDLE_ACTION: ModelActionStatus = { kind: "idle" };
@@ -540,6 +543,8 @@ export function Settings() {
           <CaptureSection port={settings.port} savedPort={savedPort} />
 
           <PromptSection settings={settings} onPatch={patch} />
+
+          <SpeechSection settings={settings} onPatch={patch} />
 
           <section className="settings-card">
             <h2>存储</h2>

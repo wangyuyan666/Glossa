@@ -35,7 +35,17 @@ serde_json = "1"
 
 anyhow = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"] }
+# process / io-util / time 是给 speech.rs 用的：朗读走 `say` 子进程，文本从 stdin 灌，
+# 再轮询它有没有念完。
+tokio = { version = "1", features = [
+  "rt-multi-thread",
+  "macros",
+  "sync",
+  "net",
+  "process",
+  "io-util",
+  "time",
+] }
 axum = "0.8"
 reqwest = { version = "0.12", default-features = false, features = [
   "json",

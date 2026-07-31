@@ -12,6 +12,7 @@ import type {
   LookupSummary,
   Provider,
   Settings,
+  Voice,
 } from "./types";
 
 export const getSettings = () => invoke<Settings>("get_settings");
@@ -74,3 +75,11 @@ export const openSettings = () => invoke<void>("open_settings");
 export const openMain = () => invoke<void>("open_main");
 
 export const closeSettings = () => invoke<void>("close_settings");
+
+export const listVoices = () => invoke<Voice[]>("list_voices");
+
+/** 念完（或被打断）才 resolve，前端靠它决定喇叭何时熄灭。 */
+export const speak = (text: string, voice: string | null, rate: number) =>
+  invoke<void>("speak", { text, voice, rate });
+
+export const stopSpeaking = () => invoke<void>("stop_speaking");

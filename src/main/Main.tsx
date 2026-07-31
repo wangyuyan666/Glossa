@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import * as api from "../lib/api";
+import * as speech from "../lib/speech";
 import type { LookupPayload } from "../lib/types";
 import { AskBox } from "../lookup/AskBox";
 import { LookupView } from "../lookup/LookupView";
@@ -20,8 +21,21 @@ export function Main() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [configured, setConfigured] = useState(true);
 
+  // 设置窗口保存后不会通知过来，所以每次窗口重新获得焦点都重读一遍——
+  // 从设置切回来就是这个时机。拿不到 focus 事件时退化成「重启后生效」，
+  // 和加发音之前的行为一样，不会更糟。
   useEffect(() => {
-    void api.getSettings().then((s) => setConfigured(s.fast !== null));
+    const apply = () => {
+      void api.getSettings().then((s) => {
+        setConfigured(s.fast !== null);
+        speech.configure({ voice: s.voice, rate: s.speechRate });
+      });
+      // 嗓子列表用来兜「配置里那个嗓子已经被卸载了」，见 speech.speak。
+      speech.loadVoices();
+    };
+    apply();
+    window.addEventListener("focus", apply);
+    return () => window.removeEventListener("focus", apply);
   }, []);
 
   // 划词触发的查询。冷启动时事件可能早于本组件挂载，所以先主动取一次暂存的。

@@ -99,11 +99,29 @@ pub struct Settings {
     pub active_translate: Option<String>,
     #[serde(default)]
     pub active_chat: Option<String>,
+
+    /// 朗读用的系统嗓子名（`speechSynthesis` 里的 `voice.name`）。None 表示自动挑。
+    ///
+    /// 存名字而不是索引：嗓子列表随系统的安装 / 卸载变动，索引会错位到别人身上。
+    /// 名字出了本机就没意义，换台机器没装这个嗓子时前端自动回落，不必迁移。
+    #[serde(default)]
+    pub voice: Option<String>,
+    /// 朗读语速，1.0 是正常速度。学英语常用 0.8 上下，所以做成可调而不是写死。
+    #[serde(default = "default_speech_rate")]
+    pub speech_rate: f32,
 }
 
 fn default_port() -> u16 {
     DEFAULT_PORT
 }
+
+fn default_speech_rate() -> f32 {
+    1.0
+}
+
+/// 语速的可用区间。再慢会一个词一个词地拖，再快就听不清了，都不是「能用」的范围。
+pub const MIN_SPEECH_RATE: f32 = 0.5;
+pub const MAX_SPEECH_RATE: f32 = 1.5;
 
 fn default_native_language() -> String {
     "中文".to_string()
@@ -123,6 +141,8 @@ impl Default for Settings {
             active_sentence: None,
             active_translate: None,
             active_chat: None,
+            voice: None,
+            speech_rate: default_speech_rate(),
         }
     }
 }
@@ -257,6 +277,16 @@ fn sanitize(mut settings: Settings) -> Settings {
     for provider in &mut settings.providers {
         provider.max_tokens = provider.max_tokens.filter(|v| *v >= MIN_MAX_TOKENS);
     }
+
+    // 手改过的 settings.json 里 0 或 10 都可能出现，前者一声不吭、后者听不清，
+    // 两种都会被当成「发音坏了」。滑块本来就限了范围，这里兜住绕过滑块的路径。
+    settings.speech_rate = if settings.speech_rate.is_finite() {
+        settings.speech_rate.clamp(MIN_SPEECH_RATE, MAX_SPEECH_RATE)
+    } else {
+        default_speech_rate()
+    };
+    // 空串挑不到任何嗓子，等同于没选，别让它变成一个选不掉的坏值。
+    settings.voice = settings.voice.filter(|name| !name.trim().is_empty());
 
     let builtin_ids: Vec<&str> = TemplateKind::ALL
         .iter()
@@ -414,6 +444,30 @@ mod tests {
         });
         assert_eq!(cleaned.providers[0].max_tokens, None);
         assert_eq!(cleaned.providers[1].max_tokens, Some(8000));
+    }
+
+    #[test]
+    fn sanitize_keeps_speech_rate_audible() {
+        let clamp = |rate: f32| {
+            sanitize(Settings {
+                speech_rate: rate,
+                ..Settings::default()
+            })
+            .speech_rate
+        };
+        assert_eq!(clamp(0.0), MIN_SPEECH_RATE);
+        assert_eq!(clamp(10.0), MAX_SPEECH_RATE);
+        assert_eq!(clamp(f32::NAN), 1.0);
+        assert_eq!(clamp(0.85), 0.85);
+    }
+
+    #[test]
+    fn sanitize_treats_blank_voice_as_unset() {
+        let cleaned = sanitize(Settings {
+            voice: Some("  ".to_string()),
+            ..Settings::default()
+        });
+        assert_eq!(cleaned.voice, None);
     }
 
     #[test]

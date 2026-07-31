@@ -63,6 +63,7 @@ src-tauri/src/
   popclip.rs      PopClip 扩展的生成与安装（package 一键）
   config.rs       Settings 结构与磁盘读写（明文 JSON + 0600）
   server.rs       本地取词监听（axum，只绑 127.0.0.1）
+  speech.rs       发音：`say` 子进程、嗓子列表、语速换算
   windows.rs      窗口显示、label 常量、LookupPayload
   first_mouse.rs  绕过 WKWebView 吞掉首次点击的上游 bug（objc runtime，macOS only）
   state.rs        跨命令共享状态（暂存查询、当前流的句柄）
@@ -80,15 +81,18 @@ src/
     stream.ts     llm-stream 事件的单例监听与按 streamId 分发
     jsonish.ts    容错的增量 JSON 解析
     imeClick.ts   补回输入法组词时被吞掉的第一次点击（macOS）
+    speech.ts     挑嗓子、记谁在念；播放本身在 Rust 侧
   lookup/         查词逻辑与 UI
     useLookup.ts  一次查询的完整状态机：流式释义 + 多轮追问 + 落库
     LookupView    释义卡片 + 对话的滚动区
     AskBox        追问输入框
+    SpeakButton   朗读按钮，正文里跟在文本后面的小喇叭
   main/           主窗口：左历史栏 + 右查词区
   settings/       设置窗口 UI
     CaptureSection  取词那一节
     PromptSection   提示词模板的选用与管理
     TemplateEditor  单个模板的编辑 + 静态检查 + 实测
+    SpeechSection   发音那一节：嗓子、语速、试听
   ui/
     icons.tsx     内联 SVG 图标，两个窗口共用
 ```
@@ -140,6 +144,42 @@ src/
 前端 `ExplanationCard` 优先使用合法 `mode`；旧历史没有该字段时，继续按独有字段回退推断（`english` → translate，`translation` → sentence，`senseHere` 等 → word）。流式期间只有 grammar 到达时不显示模式角标，避免先闪成默认 word。
 
 `history.rs` 的 `extract_sense` 仍按 `senseHere` → `translation` → `english` 回退，因此 SQLite 无需迁移，新旧记录都能显示侧栏摘要。
+
+## 发音
+
+播放在 Rust 侧调 `say`（`speech.rs`），前端只挑嗓子、记谁在念（`lib/speech.ts` + `SpeakButton`）。嗓子和语速可配：`config.rs` 的 `voice: Option<String>` 与 `speech_rate: f32`，设置页在 `SpeechSection`。
+
+四个落点：标题栏念选中原文（`word` / `sentence` 两种模式），例句念 `example.en`，翻译模式念 `english`。句子模式的中文译文和翻译模式的中文原文都不给喇叭。
+
+### 为什么不用 webview 的 `speechSynthesis`
+
+第一版就是那么写的，**推倒重来过一次，别再退回去**。WebKit 只认老式注册的那套嗓子：
+
+| | `say -v '?'` | webview 的 `getVoices()` |
+| --- | --- | --- |
+| `Ava (Premium)` | 有 | **没有** |
+| `Eddy (English (US))` | 有 | 显示成 `Eddy`，括号被剥掉 |
+| 各 locale 的默认嗓 | 各一条 | **各两条**，同名重复 |
+
+用户在「系统设置 → 辅助功能 → 朗读内容 → 管理声音」下载的 Premium / Enhanced 嗓子，webview 一条都看不到——而那正是听感好的一档，预装的 compact 版就是用户会抱怨「难听」的那个。括号被剥掉还导致同名重复，前端连唯一标识都拿不到（`key` 和 `value` 都撞）。刷新、重启都救不了，不是缓存问题。
+
+代价是每次朗读多一次进程启动（约 100ms），以及只有 macOS——这个 app 本来也只有 macOS。
+
+### 坑
+
+- **合成音的单词发音不如词典的真人录音准。** 真人录音得拉第三方词典接口，实测有道 `dict.youdao.com/dictvoice` 单词和短词组能出音频，**整句直接 500**（`I have got this` 就挂），撑不起主路径，只能当单词模式的加分项。要上在线 TTS（OpenAI `/v1/audio/speech`）的话播放管道已经在这儿了，换的只是音频来源。
+- **`say -v '?'` 不能按列切。** 名字里有空格和括号（`Bad News`、`Eddy (English (US))`），列宽也不固定。可靠锚点只有「`#` 之前最后一个空白分隔词是语言」，且语言列必然含 `_`。
+- **文本走 stdin 不走参数**：不经过 shell、没有注入面、不受 argv 长度限制，而且以 `-` 开头的选中内容不会被 `say` 当成选项。stdin 记得 drop，否则 `say` 一直等输入不退出。
+- **`say` 是独立进程**，app 退出时必须掐（`RunEvent::Exit` 里调 `speech::shutdown`），否则窗口都关了声音还在念。
+- **子进程要按「代」记账。** `Speaking { generation, child }`：新的一条会换掉旧的，旧那条的 `speak` 任务得认出「已经不是自己了」立刻收工，否则它会一直等到别人念完才 resolve，前端的喇叭图标就熄错时候。
+- **静默失败是最坏的。** `say -v` 遇到不认识的嗓音直接非零退出，不看退出码的话用户点了没声音，分不清是嗓音没了还是 app 坏了。所以 `Poll::Failed` 会变成 `Err` 冒到设置页。用户主动停走的是另一条分支（句柄已从 slot 摘走），不会被算成失败。
+- **配置存的是嗓子名不是索引。** 列表随系统装卸变动，索引会错位到别人身上。前端 `speak` 前过一遍 `pickVoice`：认得出就用，认不出自动换一个——让「卸载了一个嗓子」变成音色变了，而不是发音整个坏掉。
+- **音质档位只能从名字后缀认**（`voiceTier`，`(Premium)`=2 / `(Enhanced)`=1）。macOS 改了命名就退回 0，挑法和加档位之前一样。注意 `Eddy (English (US))` 那种括号是地区不是档位，**正则要锚在结尾**。
+- **不能直接取第一个 `lang` 匹配的嗓子**：装了几十个，混着 Bad News、Zarvox 这种趣味音。`pickVoice` 按「用户指定 → 音质档位 → 同语言 → 同语族」挑，同档位按名字定序保证每次挑的是同一个。纯函数，有单测。
+- **`voiceSnapshot()` 必须返回同一个数组引用。** 它喂给 `useSyncExternalStore`，每次现算一个新数组会被判定成「快照一直在变」，直接死循环。
+- 装完新嗓子列表不会自己变，设置页下拉旁边有手动刷新（`loadVoices(true)`）。排查「装了却选不到」先跑 `say -v '?'` 分清是系统没装还是列表旧了。
+- 流式期间正文还在长，卡片里的喇叭 `disabled`——念半句比没得念更糟。标题栏那个不受影响，选中原文一开始就是完整的。
+- 设置改完没有事件广播到主窗口，`Main` 在 `window` 每次 `focus` 时重读一遍配置。从设置切回来就是这个时机；拿不到 focus 事件就退化成重启生效。
 
 ## 两个窗口
 
