@@ -23,6 +23,17 @@ const EMPTY: SettingsData = {
   activeChat: null,
 };
 
+export function changeRoleProvider(
+  binding: RoleBinding | null,
+  providerId: string,
+): RoleBinding | null {
+  if (!providerId) return null;
+  return {
+    providerId,
+    model: binding?.providerId === providerId ? binding.model : "",
+  };
+}
+
 export function Settings() {
   const [settings, setSettings] = useState<SettingsData>(EMPTY);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, string[]>>({});
@@ -103,13 +114,7 @@ export function Settings() {
         <span className="select-field">
           <select
             value={binding?.providerId ?? ""}
-            onChange={(e) =>
-              onChange(
-                e.target.value
-                  ? { providerId: e.target.value, model: binding?.model ?? "" }
-                  : null,
-              )
-            }
+            onChange={(e) => onChange(changeRoleProvider(binding, e.target.value))}
           >
             {/* 只在还没绑的时候当占位。绑好之后列表里只剩真实厂商，
                 不留一个选了会把绑定清掉的空项。 */}
