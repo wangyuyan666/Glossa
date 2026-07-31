@@ -1,10 +1,24 @@
-# Glossa
+<div align="center">
+  <img src="Glossa.png" alt="Glossa" width="120" />
+  <h1>Glossa</h1>
+  <p><em>看懂这句话里的这个词，而不是它的全部义项</em></p>
+</div>
 
 macOS 上的 LLM 英语学习工具。在任意 app 里划中不认识的词，主窗口给出**结合上下文**的释义，可以继续追问，查过的词留在历史里。
 
 和普通词典的区别在于上下文：词典给的是这个词的全部义项，Glossa 给的是「这句话里它是什么意思」。
 
 > 当前是**阶段一**。取词层借用 PopClip，因此拿不到选中词的上下文，释义会降级为「最常见义项」。真正的上下文能力在阶段二自建取词层后落地，见 [路线图](#路线图)。
+
+## In English
+
+Glossa is an LLM-powered English learning tool for macOS. Select an unfamiliar word in any app and it explains what that word means **in that sentence** — not the dictionary's full list of senses. Ask follow-ups in the same window; everything you look up stays in your history.
+
+Bring your own model: any OpenAI-compatible endpoint (OpenAI, DeepSeek, OpenRouter, Groq, Ollama, LM Studio…) or Anthropic. There is no backend of ours — requests go straight to the endpoint you configure. Note that keys are stored **in plaintext** JSON under `~/Library/Application Support/Glossa/`, chmod `0600`; see 安全说明 below before you paste in a key with a large quota.
+
+> **Stage one.** Text selection currently rides on [PopClip](https://www.popclip.app/), which hands over the selected word without its surrounding sentence — so explanations fall back to the most common sense. Real context arrives in stage two with a native selection layer.
+
+The rest of this README is in Chinese.
 
 ## 环境要求
 
